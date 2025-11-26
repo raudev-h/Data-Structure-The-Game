@@ -6,4 +6,6 @@ import java.util.Map;
 public class ResourceCollection {
 private final Map<ResourceType,Integer> resources = new HashMap<>();
 
+    public ResourceCollection() {
+    }
 }
