@@ -1,16 +1,11 @@
-package dominion.model.players;
+package main.java.dominion.model.players;
 
-import dominion.model.territories.Territory;
-import dominion.core.Color;
-import dominion.core.GameMap;
-
-import java.util.ArrayList;
+import main.java.dominion.core.Color;
+import main.java.dominion.core.GameMap;
 
 public class Player {
 
     private String name;
     private ArrayList<Territory> territories;
     private Color color;
-
-
 }
