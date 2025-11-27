@@ -3,30 +3,24 @@ package dominion.model.buildings;
 import dominion.model.territories.Territory;
 
 public abstract class Building {
-    protected String id;
-    protected Territory territory;
+    protected final String id;
+    protected final Territory territory;
     protected int currentHealth;
+    protected final TownHall ownerTownHall;
 
-    public Building(String id, Territory territory, int currentHealth) {
+    public Building(String id, Territory territory, int currentHealth, TownHall ownerTownHall) {
         this.id = id;
         this.territory = territory;
         this.currentHealth = currentHealth;
+        this.ownerTownHall = ownerTownHall;
     }
 
     public String getId() {
         return id;
     }
 
-    public void setId(String id) {
-        this.id = id;
-    }
-
     public Territory getTerritory() {
         return territory;
-    }
-
-    public void setTerritory(Territory territory) {
-        this.territory = territory;
     }
 
     public int getCurrentHealth() {
@@ -35,5 +29,9 @@ public abstract class Building {
 
     public void setCurrentHealth(int currentHealth) {
         this.currentHealth = currentHealth;
+    }
+
+    public TownHall getOwnerTownHall() {
+        return ownerTownHall;
     }
 }

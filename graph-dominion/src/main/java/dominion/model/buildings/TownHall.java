@@ -15,6 +15,7 @@ public class TownHall {
     private int maxPopulationCapacity;
     private int currentPopulation;
     private List<Building> ownedBuildings;
+    private int level;
 
 
     public TownHall(String id, Territory territory, int currentHealth,
@@ -61,5 +62,13 @@ public class TownHall {
         return ownedBuildings;
     }
 
+    public int getLevel() {
+        return level;
+    }
 
+    public void increasePopulationCapacity(int amount){
+        if (amount > 0) {
+            this.maxPopulationCapacity += amount;
+        }
+    }
 }
