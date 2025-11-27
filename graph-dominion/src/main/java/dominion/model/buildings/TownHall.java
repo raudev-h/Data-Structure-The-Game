@@ -3,20 +3,30 @@ package dominion.model.buildings;
 import dominion.model.resources.ResourceCollection;
 import dominion.model.territories.Territory;
 
-public class TownHall extends Building{
+import java.util.ArrayList;
+import java.util.List;
+
+public class TownHall {
+    private final String id;
+    private final Territory territory;
+    private int currentHealth;
     private ResourceCollection storedResources;
     private int workerCreationTime;
     private int maxPopulationCapacity;
     private int currentPopulation;
+    private List<Building> ownedBuildings;
 
 
     public TownHall(String id, Territory territory, int currentHealth,
                     int initialCapacity, int creationTime) {
-        super(id, territory, currentHealth);
+        this.id = id;
+        this.territory = territory;
+        this.currentHealth = currentHealth;
         this.storedResources = new ResourceCollection();
         this.maxPopulationCapacity = initialCapacity;
         this.workerCreationTime = creationTime;
         this.currentPopulation = 0; // después podemos ajustar esto
+        this.ownedBuildings = new ArrayList<>();
     }
 
     public ResourceCollection getStoredResources() {
@@ -34,4 +44,22 @@ public class TownHall extends Building{
     public int getCurrentPopulation() {
         return currentPopulation;
     }
+
+    public String getId() {
+        return id;
+    }
+
+    public Territory getTerritory() {
+        return territory;
+    }
+
+    public int getCurrentHealth() {
+        return currentHealth;
+    }
+
+    public List<Building> getOwnedBuildings() {
+        return ownedBuildings;
+    }
+
+
 }
