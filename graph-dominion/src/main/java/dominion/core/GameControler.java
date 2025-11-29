@@ -16,7 +16,7 @@ public class GameControler {
     //TODO:CONSTRUCTOR
 
     //METHODS
-    
+
     //Clock Methods
 
     public boolean pauseClock(){
