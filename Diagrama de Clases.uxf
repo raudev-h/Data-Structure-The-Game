@@ -35,8 +35,10 @@
     </coordinates>
     <panel_attributes>GameTimer  (AN)
 --
-- totalGameTime: long
-- isRunning: boolean
+totalGameTime: long
+isRunning: boolean
+startTime: long
+pausedTime: long
 --</panel_attributes>
     <additional_attributes/>
   </element>
@@ -50,7 +52,7 @@
     </coordinates>
     <panel_attributes>GameController (Controladora) (AN)
 --
-</panel_attributes>
+gameRuning: boolean	</panel_attributes>
     <additional_attributes/>
   </element>
   <element>
@@ -75,6 +77,8 @@
     </coordinates>
     <panel_attributes>GameMap (AN)
 --
+width: int
+height: int
 </panel_attributes>
     <additional_attributes/>
   </element>
@@ -104,6 +108,8 @@
     </coordinates>
     <panel_attributes>Player (AN)
 --
+name: String
+color: Color
 </panel_attributes>
     <additional_attributes/>
   </element>
@@ -132,6 +138,10 @@
     </coordinates>
     <panel_attributes>Territory (AN)
 --
+name: String
+positionX: float
+positionY: float
+
 </panel_attributes>
     <additional_attributes/>
   </element>
@@ -494,8 +504,11 @@
       <w>854</w>
       <h>462</h>
     </coordinates>
-    <panel_attributes>t=&lt;&lt;&lt;&lt;-</panel_attributes>
-    <additional_attributes>60.0;390.0;10.0;390.0;10.0;20.0;1200.0;20.0;1200.0;640.0;1110.0;640.0</additional_attributes>
+    <panel_attributes>Resource &lt;Enum&gt;
+--
+- Gold
+- Wood</panel_attributes>
+    <additional_attributes/>
   </element>
   <element>
     <id>UMLClass</id>
