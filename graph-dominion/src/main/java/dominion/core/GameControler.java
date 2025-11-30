@@ -20,6 +20,7 @@ public class GameControler {
     //Clock Methods
 
     public boolean pauseClock(){
+
         return gametimer.pause();
     }
 
@@ -28,7 +29,14 @@ public class GameControler {
     }
 
     public long getElapsedSeconds(){
+
         return gametimer.getElapsedSeconds();
     }
+
+    public void resetClock(){
+        gametimer.reset();
+    }
+
+
 
 }

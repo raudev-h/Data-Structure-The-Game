@@ -4,9 +4,9 @@ public class GameTimer {
 
     //FIELDS
 
-    private long totalGameTime;
+    private long totalGameTime; // tiempo jugados (sin contar pausas)
     private boolean isRunning;
-    private long startTime;
+    private long startTime;  // tiempo del último arranque (marcador)
 
     //CONSTRUCTOR
 
@@ -47,6 +47,11 @@ public class GameTimer {
             totalGameTime += System.currentTimeMillis() - startTime;
         }
         return pausado;
+    }
+
+    public void reset(){
+        isRunning = false;
+        totalGameTime = 0;
     }
 
 
