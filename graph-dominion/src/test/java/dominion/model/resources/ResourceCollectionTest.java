@@ -46,4 +46,52 @@ public class ResourceCollectionTest {
         assertEquals(50,resourceCollection.getAmount(ResourceType.GOLD),
                 "Añadir 0 o valores negativos no debe cambiar la cantidad.");
     }
+    @Test
+    void canAfford_sufficientResources_shouldReturnTrue(){
+        resourceCollection.addResource(ResourceType.GOLD,100);
+        resourceCollection.addResource(ResourceType.WOOD,50);
+
+    Map<ResourceType,Integer> cost = Map.of(
+            ResourceType.GOLD, 80,
+            ResourceType.WOOD,40
+    );
+
+    assertTrue(resourceCollection.canAfford(cost),
+            "Debería devolver True porque todos los recursos son suficientes");
+    }
+    @Test
+    void canAfford_insufficientSingleResource_shouldReturnFalse(){
+        resourceCollection.addResource(ResourceType.GOLD, 100);
+        resourceCollection.addResource(ResourceType.WOOD, 50);
+
+        Map<ResourceType,Integer> cost = Map.of(
+                ResourceType.GOLD,101,
+                ResourceType.WOOD,40
+        );
+
+        assertFalse(resourceCollection.canAfford(cost),
+                "Debe devolver FALSE porque falta 1 unidad de ORO.");
+    }
+    @Test
+    void canAfford_requiredResourceIsNotTracked_shouldReturnFalse(){
+        resourceCollection.addResource(ResourceType.GOLD,50);
+
+        Map<ResourceType,Integer> cost = Map.of(ResourceType.WOOD,1);
+
+        assertFalse(resourceCollection.canAfford(cost),
+                "Debe devolver False si se requiere recurso no trackeado");
+    }
+    @Test
+    void canAfford_costIsZero_shouldReturnTrue() {
+        Map<ResourceType, Integer> emptyCost = Map.of();
+        assertTrue(resourceCollection.canAfford(emptyCost),
+                "Un mapa de costo vacío siempre debe retornar TRUE.");
+
+        Map<ResourceType, Integer> zeroCost = Map.of(
+                ResourceType.GOLD, 0,
+                ResourceType.WOOD, 0
+        );
+        assertTrue(resourceCollection.canAfford(zeroCost),
+                "Si el costo es 0 para todos, debe retornar TRUE.");
+    }
 }
