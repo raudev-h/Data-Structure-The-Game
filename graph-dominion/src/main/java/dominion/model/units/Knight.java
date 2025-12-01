@@ -5,7 +5,7 @@ import dominion.model.territories.Territory;
 
 public class Knight {
     private final int maxHealth;
-    private final int attackDamage;
+    private static final int ATTACKDAMAGE = 0;
     private final int armorDefense;
     private final int movementSpeed;
     private final String id;
@@ -13,10 +13,9 @@ public class Knight {
     private int currentHealth;
     private Territory location;
 
-    public Knight(int maxHP, int attack, int defense, int movementSpeed,
+    public Knight(int maxHP, int defense, int movementSpeed,
                   String id, TownHall owner, Territory initialLocation) {
         this.maxHealth = maxHP;
-        this.attackDamage = attack;
         this.armorDefense = defense;
         this.movementSpeed = movementSpeed;
         this.id = id;
@@ -30,7 +29,7 @@ public class Knight {
     }
 
     public int getAttackDamage() {
-        return attackDamage;
+        return ATTACKDAMAGE;
     }
 
     public int getArmorDefense() {
@@ -47,5 +46,9 @@ public class Knight {
 
     public TownHall getOwnerTownHall() {
         return ownerTownHall;
+    }
+
+    public static int getAttackdamage(){
+        return ATTACKDAMAGE;
     }
 }

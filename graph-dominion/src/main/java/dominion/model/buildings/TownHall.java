@@ -66,9 +66,22 @@ public class TownHall {
         return level;
     }
 
+
     public void increasePopulationCapacity(int amount){
         if (amount > 0) {
             this.maxPopulationCapacity += amount;
         }
+    }
+
+    public ArrayList<MilitaryBase> getMilitaryBases(){
+        ArrayList<MilitaryBase> militaryBases = new ArrayList<>();
+
+        for(Building b: ownedBuildings){
+            if(b instanceof MilitaryBase militaryBase){
+                militaryBases.add(militaryBase);
+            }
+        }
+
+        return militaryBases;
     }
 }

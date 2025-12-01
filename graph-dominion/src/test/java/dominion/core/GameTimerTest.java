@@ -1,9 +1,7 @@
-package main.java.dominion.core;
+package java.dominion.core;
 
 import dominion.core.GameTimer;
 import org.junit.jupiter.api.Test;
-
-import java.time.LocalTime;
 
 import static org.junit.jupiter.api.Assertions.*;
 

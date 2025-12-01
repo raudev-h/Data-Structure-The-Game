@@ -1,6 +1,6 @@
 package dominion.core;
 
-public enum Color {
+public enum COLOR {
     Azul,
     Rojo
 }
