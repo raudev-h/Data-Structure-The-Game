@@ -1,4 +1,4 @@
-package main.java.dominion.core;
+package dominion.core;
 
 public class GameTimer {
 

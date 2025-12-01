@@ -1,6 +1,7 @@
-package main.java.dominion.core;
+package dominion.core;
 
-import main.java.dominion.model.players.Player;
+import dominion.model.players.Player;
+import main.java.dominion.core.GameMap;
 
 import java.util.ArrayList;
 

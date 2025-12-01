@@ -1,4 +1,4 @@
-package main.java.dominion.model.resources;
+package dominion.model.resources;
 
 public enum Resource {
     Oro,
