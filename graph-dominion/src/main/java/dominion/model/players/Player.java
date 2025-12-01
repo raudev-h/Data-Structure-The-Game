@@ -11,4 +11,6 @@ public class Player {
     private String name;
     private ArrayList<Territory> territories;
     private Color color;
+
+
 }
