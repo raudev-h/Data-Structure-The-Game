@@ -9,9 +9,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class GameTimerTest {
 
-
-
-
     @Test
     public void testStart() {
         GameTimer timer = new GameTimer();

@@ -2,13 +2,13 @@ package main.java.dominion.core;
 
 public class GameTimer {
 
-    //FIELDS
+    //FIELDS ====================================================
 
     private long totalGameTime; // tiempo jugados (sin contar pausas)
     private boolean isRunning;
     private long startTime;  // tiempo del último arranque (marcador)
 
-    //CONSTRUCTOR
+    //CONSTRUCTOR ===============================================
 
     public GameTimer(){
         totalGameTime = 0;
@@ -16,7 +16,7 @@ public class GameTimer {
         startTime  = 0;
     }
 
-    //GETTERS AND SETTERS
+    //GETTERS AND SETTERS ========================================
     public long getStartTime(){
         return startTime;
     }
@@ -25,7 +25,7 @@ public class GameTimer {
         return isRunning;
     }
 
-    //METHODS
+    //METHODS ===================================================
 
     //Marcar el marcador en el inicio de juego o despues de una pausa
     public boolean start(){
