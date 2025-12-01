@@ -1,6 +1,6 @@
-package main.java.dominion.core;
+package dominion.core;
 
-import main.java.dominion.model.territories.Territory;
+import dominion.model.territories.Territory;
 
 import java.util.ArrayList;
 

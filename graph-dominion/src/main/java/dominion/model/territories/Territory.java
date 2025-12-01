@@ -1,7 +1,7 @@
-package main.java.dominion.model.territories;
+package dominion.model.territories;
 
-import main.java.dominion.model.buildings.TownHall;
-import main.java.dominion.model.players.Player;
+import dominion.model.buildings.TownHall;
+import dominion.model.players.Player;
 
 public class Territory {
 

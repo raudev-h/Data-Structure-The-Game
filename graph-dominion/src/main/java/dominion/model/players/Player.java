@@ -1,7 +1,10 @@
-package main.java.dominion.model.players;
+package dominion.model.players;
 
-import main.java.dominion.core.Color;
-import main.java.dominion.core.GameMap;
+import dominion.model.territories.Territory;
+import dominion.core.Color;
+import dominion.core.GameMap;
+
+import java.util.ArrayList;
 
 public class Player {
 
