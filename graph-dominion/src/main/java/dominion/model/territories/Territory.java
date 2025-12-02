@@ -9,4 +9,8 @@ public class Territory {
     private TownHall townHall;
     private double positionX;
     private double positionY;
+
+    public TownHall getTownHall() {
+        return townHall;
+    }
 }
