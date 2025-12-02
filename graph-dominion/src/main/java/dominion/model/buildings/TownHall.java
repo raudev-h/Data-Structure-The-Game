@@ -1,10 +1,12 @@
 package dominion.model.buildings;
 
 import dominion.model.resources.ResourceCollection;
+import dominion.model.resources.ResourceType;
 import dominion.model.territories.Territory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public class TownHall {
     private final String id;
@@ -69,6 +71,15 @@ public class TownHall {
     public void increasePopulationCapacity(int amount){
         if (amount > 0) {
             this.maxPopulationCapacity += amount;
+        }
+    }
+    public void createHouse(){
+        final Map<ResourceType,Integer> HOUSE_COST = Map.of(ResourceType.WOOD,60);
+
+        if(getStoredResources().canAfford(HOUSE_COST)){
+            storedResources.spend(HOUSE_COST);
+            House house = new House("sad",getTerritory(),100);
+            ownedBuildings.add(house);
         }
     }
 }

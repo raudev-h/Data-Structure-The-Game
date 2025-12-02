@@ -30,4 +30,15 @@ public class ResourceCollection {
     public int getAmount(ResourceType type) {
         return storage.getOrDefault(type, 0);
     }
+
+    public void spend(Map<ResourceType, Integer> costMap) {
+        for (Map.Entry<ResourceType, Integer> entry : costMap.entrySet()) {
+            ResourceType type = entry.getKey();
+            int requiredAmount = entry.getValue();
+
+            storage.put(
+                    type,
+                    storage.getOrDefault(type,0) - requiredAmount);
+        }
+    }
 }
