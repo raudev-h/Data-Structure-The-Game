@@ -94,4 +94,32 @@ public class ResourceCollectionTest {
         assertTrue(resourceCollection.canAfford(zeroCost),
                 "Si el costo es 0 para todos, debe retornar TRUE.");
     }
+    @Test
+    void spend_sufficientResources_shouldDecreaseAmount(){
+        resourceCollection.addResource(ResourceType.WOOD, 100);
+
+        Map<ResourceType,Integer> cost = Map.of(
+                ResourceType.WOOD,60
+        );
+        resourceCollection.spend(cost);
+        assertEquals(40,resourceCollection.getAmount(ResourceType.WOOD),
+                "Debe reducir la cantidad de madera en 60"
+        );
+    }
+    @Test
+    void spend_zeroOrNegativeAmount_shouldDoNothing(){
+        resourceCollection.addResource(ResourceType.WOOD, 100);
+
+        Map<ResourceType,Integer> costZero = Map.of(
+                ResourceType.WOOD,0
+        );
+        Map<ResourceType,Integer> costNegative = Map.of(
+                ResourceType.WOOD,-10
+        );
+        resourceCollection.spend(costZero);
+        resourceCollection.spend(costNegative);
+
+        assertEquals(100,resourceCollection.getAmount(ResourceType.WOOD),
+                "Gastar 0 o valores negativos no debe cambiar la cantidad.");
+    }
 }

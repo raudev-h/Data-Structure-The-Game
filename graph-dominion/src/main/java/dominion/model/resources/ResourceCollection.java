@@ -36,9 +36,11 @@ public class ResourceCollection {
             ResourceType type = entry.getKey();
             int requiredAmount = entry.getValue();
 
-            storage.put(
-                    type,
-                    storage.getOrDefault(type,0) - requiredAmount);
+           if(requiredAmount > 0){
+               storage.put(
+                       type,
+                       storage.getOrDefault(type,0) - requiredAmount);
+           }
         }
     }
 }
