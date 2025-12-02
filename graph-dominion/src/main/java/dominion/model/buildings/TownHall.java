@@ -21,13 +21,14 @@ public class TownHall {
 
 
     public TownHall(String id, Territory territory, int currentHealth,
-                    int initialCapacity, int creationTime) {
+                    int initialCapacity, int workerCreationTime) {
         this.id = id;
         this.territory = territory;
+        this.territory.setTownHall(this);
         this.currentHealth = currentHealth;
         this.storedResources = new ResourceCollection();
         this.maxPopulationCapacity = initialCapacity;
-        this.workerCreationTime = creationTime;
+        this.workerCreationTime = workerCreationTime;
         this.currentPopulation = 0; // después podemos ajustar esto
         this.ownedBuildings = new ArrayList<>();
     }
@@ -78,7 +79,7 @@ public class TownHall {
 
         if(getStoredResources().canAfford(HOUSE_COST)){
             storedResources.spend(HOUSE_COST);
-            House house = new House("sad",getTerritory(),100);
+            House house = new House("sad",this.territory,100);
             ownedBuildings.add(house);
         }
     }

@@ -1,6 +1,5 @@
 package dominion.model.resources;
-import dominion.model.resources.ResourceCollection;
-import dominion.model.resources.ResourceType;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import java.util.Map;
