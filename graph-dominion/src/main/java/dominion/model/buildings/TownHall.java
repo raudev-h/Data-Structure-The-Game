@@ -2,6 +2,9 @@ package dominion.model.buildings;
 
 import dominion.model.resources.ResourceCollection;
 import dominion.model.territories.Territory;
+import dominion.model.units.Miner;
+import dominion.model.units.ResourceCollector;
+import dominion.model.units.WoodCutter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,6 +19,7 @@ public class TownHall {
     private int currentPopulation;
     private List<Building> ownedBuildings;
     private int level;
+    private List<ResourceCollector> resourceCollectors;
 
 
     public TownHall(String id, Territory territory, int currentHealth,
@@ -84,4 +88,47 @@ public class TownHall {
 
         return militaryBases;
     }
+
+    public ArrayList<WoodCutter> getWoodCutters(){
+        ArrayList<WoodCutter> woodCutters = new ArrayList<>();
+
+        for( ResourceCollector rc: resourceCollectors){
+            if(rc instanceof WoodCutter wc){
+                woodCutters.add(wc);
+            }
+        }
+
+        return woodCutters;
+    }
+
+    public ArrayList<Miner> getMiners(){
+        ArrayList<Miner> woodCutters = new ArrayList<>();
+
+        for( ResourceCollector rc: resourceCollectors){
+            if(rc instanceof Miner m){
+                woodCutters.add(m);
+            }
+        }
+
+        return woodCutters;
+    }
+
+    public int getTotalEffectiveDefenceBases(){
+        int total = 0;
+        for(MilitaryBase mb: getMilitaryBases()){
+            total += mb.getTotalEffectiveDefenceKnights();
+
+        }
+        return total;
+    }
+
+    public int eliminateKnightsAndGetRemainingBases(int amount){
+        int toEliminate = amount;
+        for(int i = 0 ; i < getMilitaryBases().size() && toEliminate != 0; i++ ){
+            toEliminate  = getMilitaryBases().get(i).removeKnightsAndGetRemaining(toEliminate);
+
+        }
+        return toEliminate;
+    }
+
 }

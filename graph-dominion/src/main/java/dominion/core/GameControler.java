@@ -1,7 +1,8 @@
 package dominion.core;
 
+import dominion.model.buildings.MilitaryBase;
 import dominion.model.players.Player;
-import main.java.dominion.core.GameMap;
+import dominion.model.territories.Territory;
 
 import java.util.ArrayList;
 
@@ -36,6 +37,26 @@ public class GameControler {
 
     public void resetClock(){
         gametimer.reset();
+    }
+
+    //Atack methods TODO: Validar que el target sea vecino en el grafo
+    public AttackResult handleAttack(Player attacker, Territory target) {
+        if ((!gameRunning || gametimer.getElapsedSeconds() < 5*60_000) || (attacker == null || target == null) ||
+                attacker.getKnightAmount() == 0 || target.getPlayerOwner().equals(attacker) ){
+
+            return AttackResult.INVALID;
+        }
+        // --- todas las reglas pasadas ---
+
+        AttackResult result = attacker.attack(target);
+
+        if(result.equals(AttackResult.VICTORY)) {
+            for (MilitaryBase mb : target.getTownHall().getMilitaryBases()) {
+                mb.removeAllKnights();
+            }
+        }
+
+        return result;// devuelve Victoria o Derrota
     }
 
 

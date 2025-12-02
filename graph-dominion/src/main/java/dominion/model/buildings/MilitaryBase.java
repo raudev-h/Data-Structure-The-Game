@@ -6,6 +6,7 @@ import dominion.model.territories.Territory;
 import dominion.model.units.Knight;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -21,5 +22,34 @@ public class MilitaryBase extends Building{
     public List<Knight> getKnights(){
         return  knights;
     }
+
+    public int getTotalEffectiveDefenceKnights(){
+        int total = 0;
+        for(Knight k: knights){
+            total = k.getEffectiveDefense();
+        }
+
+        return total;
+    }
+
+    public void removeAllKnights(){
+        knights.clear();
+    }
+
+    //Eliminar caballeros y devolver el resto faltante a eliminar
+    public int removeKnightsAndGetRemaining(int amount){
+        int eliminated = 0;
+
+       Iterator<Knight> it = knights.iterator();
+       while(it.hasNext() && eliminated != amount){
+           Knight k = it.next();
+           it.remove();
+           eliminated ++;
+       }
+
+
+        return amount - eliminated;
+    }
+
 
 }

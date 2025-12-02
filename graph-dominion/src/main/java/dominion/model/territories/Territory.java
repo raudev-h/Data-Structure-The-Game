@@ -18,5 +18,9 @@ public class Territory {
         return townHall;
     }
 
+    public Player getPlayerOwner(){
+        return owner;
+    }
+
     //METHODS ==============================================
 }

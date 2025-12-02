@@ -51,4 +51,8 @@ public class Knight {
     public static int getAttackdamage(){
         return ATTACKDAMAGE;
     }
+
+    public int getEffectiveDefense(){
+        return armorDefense + currentHealth;
+    }
 }
