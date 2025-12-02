@@ -17,6 +17,9 @@ public class HouseTest {
     }
     @Test
     void House_instanceHouse_shouldIncreaseMaxPopulationCapacity(){
+
+        assertEquals(0,townHall.getMaxPopulationCapacity(),
+                "Debe devolver 0");
         House house = new House("ewer", territory, 100, townHall);
         assertEquals(5,townHall.getMaxPopulationCapacity(),
                 "La cantidad máxima de población debe aumentar en 5");
