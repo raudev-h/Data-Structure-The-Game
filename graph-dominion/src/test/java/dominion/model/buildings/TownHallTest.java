@@ -25,7 +25,7 @@ public class TownHallTest {
                 "La capacidad inicial debe ser 5");
     }
     @Test
-    void createHouse_sufficientResources_shouldIncreaseSizeOfOwnedBuildings() {
+    void createHouse_sufficientResources_startsOrderAndSpendsCost() {
         townHall.getStoredResources().addResource(ResourceType.WOOD, 60);
         townHall.createHouse();
 
@@ -33,6 +33,15 @@ public class TownHallTest {
                 "Debe haber 1 orden en la cola de construcción.");
 
         assertEquals(0, townHall.getStoredResources().getAmount(ResourceType.WOOD));
+    }
+    @Test
+    void createMilitaryBase_sufficientResources_startsOrderAndChecksRemainingResource(){
+        townHall.getStoredResources().addResource(ResourceType.WOOD, 120);
+        townHall.createMilitaryBase();
+
+        assertEquals(1,townHall.getConstructionQueue().size(),
+                "Debe haber 1 order en la cola de construcción");
+        assertEquals(20,townHall.getStoredResources().getAmount(ResourceType.WOOD));
     }
     @Test
     void completeConstruction_houseType_createsHouseAndIncreaseCapacity(){
