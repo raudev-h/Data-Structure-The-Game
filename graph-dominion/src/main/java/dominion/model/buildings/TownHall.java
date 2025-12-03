@@ -8,6 +8,7 @@ import java.util.*;
 
 public class TownHall {
     private static final int INITIAL_CAPACITY = 5;
+    private static final int BUILDINGS_HEALTH = 100;
     private final String id;
     private final Territory territory;
     private int currentHealth;
@@ -93,6 +94,21 @@ public class TownHall {
             constructionQueue.add(order);
         }
     }
+    public void createMilitaryBase(){
+        final Map<ResourceType,Integer> MILITARY_BASE_COST = Map.of(ResourceType.WOOD,100);
+        final int MILITARY_BASE_BUILD_TIME = 50;
+
+        if(getStoredResources().canAfford(MILITARY_BASE_COST)){
+            storedResources.spend(MILITARY_BASE_COST);
+            ConstructionOrder order = new ConstructionOrder(
+              UUID.randomUUID().toString(),
+              BuildingType.MILITARY_BASE,
+              MILITARY_BASE_BUILD_TIME
+            );
+            constructionQueue.add(order);
+        }
+
+    }
     public void processConstructionQueue(){
         ConstructionOrder currentOrder = constructionQueue.peek();
         if (currentOrder != null){
@@ -109,12 +125,12 @@ public class TownHall {
             case HOUSE -> newBuilding = new House(
                     order.getBuildingId(),
                     this.territory,
-                    100
+                    BUILDINGS_HEALTH
             );
             case MILITARY_BASE -> newBuilding = new MilitaryBase(
                     order.getBuildingId(),
                     this.territory,
-                    100
+                    BUILDINGS_HEALTH
             );
             default -> { return;}
         }
