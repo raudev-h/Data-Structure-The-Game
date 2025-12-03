@@ -27,7 +27,9 @@ public class TownHallTest {
     @Test
     void createHouse_sufficientResources_startsOrderAndSpendsCost() {
         townHall.getStoredResources().addResource(ResourceType.WOOD, 60);
-        townHall.createHouse();
+        boolean success = townHall.createHouse();
+
+        assertTrue(success,"Debe devolver True cuando los recursos son suficientes");
 
         assertEquals(1, townHall.getConstructionQueue().size(),
                 "Debe haber 1 orden en la cola de construcción.");
@@ -35,13 +37,43 @@ public class TownHallTest {
         assertEquals(0, townHall.getStoredResources().getAmount(ResourceType.WOOD));
     }
     @Test
+    void createHouse_insufficientResources_returnsFalseAndDoesNothing() {
+        townHall.getStoredResources().addResource(ResourceType.WOOD, 59);
+        int initialWood = townHall.getStoredResources().getAmount(ResourceType.WOOD);
+        boolean success = townHall.createHouse();
+
+        assertFalse(success, "El método debe devolver False si los recursos son insuficientes.");
+
+        assertEquals(initialWood, townHall.getStoredResources().getAmount(ResourceType.WOOD),
+                "El saldo de madera no debe cambiar.");
+
+        assertEquals(0, townHall.getConstructionQueue().size(),
+                "No se debe iniciar ninguna orden de construcción.");
+    }
+    @Test
     void createMilitaryBase_sufficientResources_startsOrderAndChecksRemainingResource(){
         townHall.getStoredResources().addResource(ResourceType.WOOD, 120);
-        townHall.createMilitaryBase();
+        boolean success = townHall.createMilitaryBase();
+
+        assertTrue(success,"Debe devolver True cuando los recursos son suficientes");
 
         assertEquals(1,townHall.getConstructionQueue().size(),
                 "Debe haber 1 order en la cola de construcción");
         assertEquals(20,townHall.getStoredResources().getAmount(ResourceType.WOOD));
+    }
+    @Test
+    void createMilitaryBase_insufficientResources_returnsFalseAndDoesNothing() {
+        townHall.getStoredResources().addResource(ResourceType.WOOD, 90);
+        int initialWood = townHall.getStoredResources().getAmount(ResourceType.WOOD);
+        boolean success = townHall.createMilitaryBase();
+
+        assertFalse(success, "El método debe devolver False si los recursos son insuficientes.");
+
+        assertEquals(initialWood, townHall.getStoredResources().getAmount(ResourceType.WOOD),
+                "El saldo de madera no debe cambiar.");
+
+        assertEquals(0, townHall.getConstructionQueue().size(),
+                "No se debe iniciar ninguna orden de construcción.");
     }
     @Test
     void completeConstruction_houseType_createsHouseAndIncreaseCapacity(){

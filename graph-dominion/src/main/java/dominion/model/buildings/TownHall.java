@@ -80,34 +80,28 @@ public class TownHall {
             this.maxPopulationCapacity += amount;
         }
     }
-    public void createHouse(){
-        final Map<ResourceType,Integer> HOUSE_COST = Map.of(ResourceType.WOOD,60);
-        final int HOUSE_BUILD_TIME = 30;
-
-        if(getStoredResources().canAfford(HOUSE_COST)){
-            storedResources.spend(HOUSE_COST);
+    private boolean startBuildingCreation(BuildingType type,Map<ResourceType,Integer> cost,int buildTime){
+        if(getStoredResources().canAfford(cost)){
+            storedResources.spend(cost);
             ConstructionOrder order = new ConstructionOrder(
                     UUID.randomUUID().toString(),
-                    BuildingType.HOUSE,
-                    HOUSE_BUILD_TIME
+                    type,
+                    buildTime
             );
             constructionQueue.add(order);
+            return true;
         }
+        return false;
     }
-    public void createMilitaryBase(){
+    public boolean createHouse(){
+        final Map<ResourceType,Integer> HOUSE_COST = Map.of(ResourceType.WOOD,60);
+        final int HOUSE_BUILD_TIME = 30;
+        return startBuildingCreation(BuildingType.HOUSE,HOUSE_COST,HOUSE_BUILD_TIME);
+    }
+    public boolean createMilitaryBase(){
         final Map<ResourceType,Integer> MILITARY_BASE_COST = Map.of(ResourceType.WOOD,100);
         final int MILITARY_BASE_BUILD_TIME = 50;
-
-        if(getStoredResources().canAfford(MILITARY_BASE_COST)){
-            storedResources.spend(MILITARY_BASE_COST);
-            ConstructionOrder order = new ConstructionOrder(
-              UUID.randomUUID().toString(),
-              BuildingType.MILITARY_BASE,
-              MILITARY_BASE_BUILD_TIME
-            );
-            constructionQueue.add(order);
-        }
-
+        return startBuildingCreation(BuildingType.MILITARY_BASE,MILITARY_BASE_COST,MILITARY_BASE_BUILD_TIME);
     }
     public void processConstructionQueue(){
         ConstructionOrder currentOrder = constructionQueue.peek();
