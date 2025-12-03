@@ -7,6 +7,7 @@ import dominion.model.territories.Territory;
 import java.util.*;
 
 public class TownHall {
+    private static final int INITIAL_CAPACITY = 5;
     private final String id;
     private final Territory territory;
     private int currentHealth;
@@ -20,13 +21,13 @@ public class TownHall {
 
 
     public TownHall(String id, Territory territory, int currentHealth,
-                    int initialCapacity, int workerCreationTime) {
+                    int workerCreationTime) {
         this.id = id;
         this.territory = territory;
         this.territory.setTownHall(this);
         this.currentHealth = currentHealth;
         this.storedResources = new ResourceCollection();
-        this.maxPopulationCapacity = initialCapacity;
+        this.maxPopulationCapacity = INITIAL_CAPACITY;
         this.workerCreationTime = workerCreationTime;
         this.currentPopulation = 0; // después podemos ajustar esto
         this.ownedBuildings = new ArrayList<>();
@@ -97,7 +98,8 @@ public class TownHall {
         if (currentOrder != null){
             currentOrder.tick();
             if (currentOrder.isComplete()){
-
+                completeConstruction(currentOrder);
+                constructionQueue.poll();
             }
         }
     }
@@ -105,12 +107,12 @@ public class TownHall {
         Building newBuilding = null;
         switch (order.getType()){
             case HOUSE -> newBuilding = new House(
-                    UUID.randomUUID().toString(),
+                    order.getBuildingId(),
                     this.territory,
                     100
             );
             case MILITARY_BASE -> newBuilding = new MilitaryBase(
-                    UUID.randomUUID().toString(),
+                    order.getBuildingId(),
                     this.territory,
                     100
             );

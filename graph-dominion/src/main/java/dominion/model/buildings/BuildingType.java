@@ -2,5 +2,6 @@ package dominion.model.buildings;
 
 public enum BuildingType {
     HOUSE,
-    MILITARY_BASE
+    MILITARY_BASE,
+    CASTLE
 }

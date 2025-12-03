@@ -12,7 +12,7 @@ public class TerritoryTest {
     @BeforeEach
     void setUp(){
         territory = new Territory();
-        townHall = new TownHall("",territory,100,0,5);
+        townHall = new TownHall("",territory,100, 5);
     }
     @Test
     void getTownHall_initialize_shouldReturnTownHallObject(){
