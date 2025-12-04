@@ -23,10 +23,15 @@ public class MilitaryBase extends Building{
         return  knights;
     }
 
+    public void addKnight(int maxHP, int defense, int movementSpeed,
+                          String id, TownHall owner, Territory initialLocation){
+        knights.add(new Knight(maxHP,defense,movementSpeed,id,owner,initialLocation));
+    }
+
     public int getTotalEffectiveDefenceKnights(){
         int total = 0;
         for(Knight k: knights){
-            total = k.getEffectiveDefense();
+            total += k.getEffectiveDefense();
         }
 
         return total;

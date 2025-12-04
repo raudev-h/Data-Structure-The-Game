@@ -1,4 +1,4 @@
-package java.dominion.core;
+package dominion.core;
 
 import dominion.core.GameTimer;
 import org.junit.jupiter.api.Test;

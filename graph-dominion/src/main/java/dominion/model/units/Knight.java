@@ -5,7 +5,7 @@ import dominion.model.territories.Territory;
 
 public class Knight {
     private final int maxHealth;
-    private static final int ATTACKDAMAGE = 0;
+    private static final int ATTACKDAMAGE = 10;
     private final int armorDefense;
     private final int movementSpeed;
     private final String id;
@@ -51,6 +51,7 @@ public class Knight {
     public static int getAttackdamage(){
         return ATTACKDAMAGE;
     }
+
 
     public int getEffectiveDefense(){
         return armorDefense + currentHealth;
