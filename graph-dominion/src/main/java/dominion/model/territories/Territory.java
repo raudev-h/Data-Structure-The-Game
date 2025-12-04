@@ -11,16 +11,15 @@ public class Territory {
     private double positionX;
     private double positionY;
 
-    //CONSTRUCTOR ====================================
-
-    //GETTERS AND SETTERS ================================
-    public TownHall getTownHall(){
+    public Territory(){
+    }
+    public void setTownHall(TownHall townHall){
+        this.townHall = townHall;
+    }
+    public TownHall getTownHall() {
         return townHall;
     }
-
-    public Player getPlayerOwner(){
+  public Player getPlayerOwner(){
         return owner;
     }
-
-    //METHODS ==============================================
 }
