@@ -5,6 +5,7 @@ import dominion.model.players.Player;
 
 public class Territory {
 
+    //FIELDS ===========================================
     private Player owner;
     private TownHall townHall;
     private double positionX;
@@ -17,5 +18,8 @@ public class Territory {
     }
     public TownHall getTownHall() {
         return townHall;
+    }
+  public Player getPlayerOwner(){
+        return owner;
     }
 }
