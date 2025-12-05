@@ -17,10 +17,12 @@ public class MilitaryBaseTest {
     void addKnights(){
 
         mb = new MilitaryBase("MB-01", null, 50);
-
-        mb.addKnight(100, 8, 3, "K-001", null, null);
-        mb.addKnight(100, 8, 3, "K-002", null, null);
-        mb.addKnight(100, 8, 3, "K-003", null, null);
+        Knight knight1 = new Knight(100, 8, 3, "K-001", null, null);
+        Knight knight2 = new Knight(100, 8, 3, "K-001", null, null);
+        Knight knight3 = new Knight(100, 8, 3, "K-001", null, null);
+        mb.getKnights().add(knight1);
+        mb.getKnights().add(knight2);
+        mb.getKnights().add(knight3);
     }
 
     @Test

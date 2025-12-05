@@ -4,7 +4,6 @@ import dominion.model.resources.ResourceType;
 import dominion.model.territories.Territory;
 import dominion.model.units.Knight;
 import dominion.model.units.UnitType;
-import dominion.model.units.UnitType.*;
 
 import java.util.*;
 
@@ -23,11 +22,6 @@ public class MilitaryBase extends Building{
 
     public List<Knight> getKnights(){
         return  knights;
-    }
-
-    public void addKnight(int maxHP, int defense, int movementSpeed,
-                          String id, TownHall owner, Territory initialLocation){
-        knights.add(new Knight(maxHP,defense,movementSpeed,id,owner,initialLocation));
     }
 
     public int getTotalEffectiveDefenceKnights(){
