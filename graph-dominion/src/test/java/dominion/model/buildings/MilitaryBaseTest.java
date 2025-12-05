@@ -6,7 +6,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
-public class TestMilitaryBase {
+public class MilitaryBaseTest {
 
     private Knight knight1;
     private Knight knight2;
@@ -16,7 +16,7 @@ public class TestMilitaryBase {
     @BeforeEach
     void addKnights(){
 
-        mb = new MilitaryBase("MB-01", null, 50, null);
+        mb = new MilitaryBase("MB-01", null, 50);
 
         mb.addKnight(100, 8, 3, "K-001", null, null);
         mb.addKnight(100, 8, 3, "K-002", null, null);
