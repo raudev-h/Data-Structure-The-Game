@@ -1,5 +1,6 @@
 package dominion.model.units;
 
 public enum UnitType {
-    KNIGHT
+    KNIGHT,
+    ARCHER
 }

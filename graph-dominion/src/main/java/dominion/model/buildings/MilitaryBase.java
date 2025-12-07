@@ -24,6 +24,10 @@ public class MilitaryBase extends Building{
         return  knights;
     }
 
+    public Deque<UnitCreationOrder> getTrainingQueue() {
+        return trainingQueue;
+    }
+
     public int getTotalEffectiveDefenceKnights(){
         int total = 0;
         for(Knight k: knights){
@@ -65,7 +69,7 @@ public class MilitaryBase extends Building{
         return false;
     }
     public boolean createKnight(){
-        final Map<ResourceType,Integer> KNIGHT_COST = Map.of(ResourceType.GOLD,50);
+        final Map<ResourceType,Integer> KNIGHT_COST = Map.of(ResourceType.GOLD,80);
         final int KNIGHT_TRAINING_TIME = 40;
         return startUnitCreation(UnitType.KNIGHT,KNIGHT_COST,KNIGHT_TRAINING_TIME);
     }

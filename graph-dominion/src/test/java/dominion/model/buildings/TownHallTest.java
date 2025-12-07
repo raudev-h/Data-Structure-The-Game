@@ -189,5 +189,4 @@ public class TownHallTest {
         assertEquals(capacityBeforeConstruction + POPULATION_BONUS, townHall.getMaxPopulationCapacity(),
                 "La capacidad de población debe aumentar en 5.");
     }
-
 }

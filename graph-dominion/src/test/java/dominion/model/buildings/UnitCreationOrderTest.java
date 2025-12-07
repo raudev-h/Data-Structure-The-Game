@@ -1,49 +1,49 @@
 package dominion.model.buildings;
 
+import dominion.model.units.UnitType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class ConstructionOrderTest {
-    private static final BuildingType HOUSE_TEST_TYPE = BuildingType.HOUSE;
+public class UnitCreationOrderTest {
+    private static final UnitType KNIGHT_TEST_TYPE = UnitType.KNIGHT;
     private static final int INITIAL_TIME = 5;
-    private ConstructionOrder order;
+    private UnitCreationOrder order;
 
     @BeforeEach
     void setUp(){
-        order = new ConstructionOrder(
+        order = new UnitCreationOrder(
                 UUID.randomUUID().toString(),
-                HOUSE_TEST_TYPE,
-                INITIAL_TIME
-        );
+                KNIGHT_TEST_TYPE,
+                INITIAL_TIME);
     }
     @Test
     void constructor_setInitialTimeAndType(){
         assertEquals(INITIAL_TIME,order.getRemainingTime(),
                 "El tiempo inicial debe ser 5");
-        assertEquals(HOUSE_TEST_TYPE,order.getType(),
-                "El type debe ser House");
+        assertEquals(KNIGHT_TEST_TYPE,order.getType(),
+                "El type debe ser Knight");
     }
-    @Test
     void tick_decrementsRemainingTime(){
         order.tick();
-        assertEquals(INITIAL_TIME - 1,order.getRemainingTime(),
-                "El tiempo inicial debe decrementar en 1 después de un ticket");
+        assertEquals(4,order.getRemainingTime(),
+                "El tiempo inicial debe decrementar en 1");
     }
     @Test
     void isComplete_afterCompletingTime_shouldReturnTrue(){
-        for(int i = 0; i < INITIAL_TIME;i++){
+        for(int i = 0; i < INITIAL_TIME; i++){
             order.tick();
         }
-        assertTrue(order.isComplete(),
-                "Debe ser True cuando el tiempo restante es 0");
+        assertTrue(order.isComplete(),"" +
+                "Debe ser true cuando el tiempo restante es 0");
     }
     @Test
     void tick_doesNotGoBelowZero(){
-        for(int i = 0; i < INITIAL_TIME;i++){
+        for(int i = 0; i < INITIAL_TIME; i++){
             order.tick();
         }
         order.tick();

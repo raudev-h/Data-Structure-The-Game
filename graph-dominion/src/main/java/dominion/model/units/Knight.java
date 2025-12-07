@@ -52,6 +52,9 @@ public class Knight {
         return ATTACKDAMAGE;
     }
 
+    public Territory getLocation() {
+        return location;
+    }
 
     public int getEffectiveDefense(){
         return armorDefense + currentHealth;
