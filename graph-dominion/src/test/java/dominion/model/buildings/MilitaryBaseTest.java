@@ -17,6 +17,8 @@ public class MilitaryBaseTest {
     private MilitaryBase mb;
     private Territory territory;
     private TownHall townHall;
+    private Knight knight1, knight2 , knight3;
+
 
     @BeforeEach
     void setUp() {
@@ -24,9 +26,9 @@ public class MilitaryBaseTest {
         townHall = new TownHall("", territory, 100, 10);
         mb = new MilitaryBase("MB-01", territory, 50);
 
-        Knight knight1 = new Knight(100, 8, 3, "K-001", null, null);
-        Knight knight2 = new Knight(100, 8, 3, "K-002", null, null);
-        Knight knight3 = new Knight(100, 8, 3, "K-003", null, null);
+        knight1 = new Knight(100, 8, 3, "K-001",townHall,territory);
+        knight2 = new Knight(100, 8, 3, "K-002",townHall,territory);
+        knight3 = new Knight(100, 8, 3, "K-003",townHall,territory );
     }
 
     @Test
@@ -36,6 +38,7 @@ public class MilitaryBaseTest {
         mb.getKnights().add(knight1);
         mb.getKnights().add(knight2);
         mb.getKnights().add(knight3);
+        assertEquals(3, mb.getKnights().size());
 
         assertEquals(324, mb.getTotalEffectiveDefenceKnights());
 
@@ -142,6 +145,5 @@ public class MilitaryBaseTest {
                 "El caballero debe haber sido creado y registrado.");
     }
 
-    @Test
-    void
+
 }
