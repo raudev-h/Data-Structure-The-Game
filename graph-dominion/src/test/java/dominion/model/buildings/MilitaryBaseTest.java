@@ -23,14 +23,16 @@ public class MilitaryBaseTest {
         territory = new Territory();
         townHall = new TownHall("", territory, 100, 10);
         mb = new MilitaryBase("MB-01", territory, 50);
+
+        Knight knight1 = new Knight(100, 8, 3, "K-001", null, null);
+        Knight knight2 = new Knight(100, 8, 3, "K-002", null, null);
+        Knight knight3 = new Knight(100, 8, 3, "K-003", null, null);
     }
 
     @Test
     @DisplayName("total effective defense of three full-health knights is 324")
-    public void getTotalEffectiveDefenseTest() {
-        Knight knight1 = new Knight(100, 8, 3, "K-001", null, null);
-        Knight knight2 = new Knight(100, 8, 3, "K-002", null, null);
-        Knight knight3 = new Knight(100, 8, 3, "K-003", null, null);
+    public void getTotalEffectiveDefense() {
+
         mb.getKnights().add(knight1);
         mb.getKnights().add(knight2);
         mb.getKnights().add(knight3);
@@ -139,4 +141,7 @@ public class MilitaryBaseTest {
         assertEquals(1,  mb.getKnights().size(),
                 "El caballero debe haber sido creado y registrado.");
     }
+
+    @Test
+    void
 }
