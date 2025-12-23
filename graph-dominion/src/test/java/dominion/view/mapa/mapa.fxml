@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.layout.AnchorPane?>
+
+<AnchorPane id="AnchorPane" prefHeight="400.0" prefWidth="600.0" xmlns="http://javafx.com/javafx/25" xmlns:fx="http://javafx.com/fxml/1" fx:controller="mapa.MapaController">
+   <children>
+      <Button id="backToMenu" fx:id="backToMenu" layoutX="382.0" layoutY="29.0" mnemonicParsing="false" onAction="#backToMenuAction" prefHeight="25.0" prefWidth="159.0" text="Volver al menu" />
+   </children>
+</AnchorPane>
