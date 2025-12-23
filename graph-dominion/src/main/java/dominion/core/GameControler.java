@@ -55,7 +55,8 @@ public class GameControler {
         //Atack methods TODO: Validar que el target sea vecino en el grafo
         public AttackResult handleAttack(Player attacker, Territory target) {
             if ((!gameRunning || gametimer.getElapsedSeconds() < 5*60) || (attacker == null || target == null) ||
-                    attacker.getKnightAmount() == 0 || target.getPlayerOwner().equals(attacker) ){
+                    attacker.getKnightAmount() == 0 || target.getPlayerOwner().equals(attacker) ||
+                    !gameMap.playerCanAttack(attacker, target)){
 
                 return AttackResult.INVALID;
             }
