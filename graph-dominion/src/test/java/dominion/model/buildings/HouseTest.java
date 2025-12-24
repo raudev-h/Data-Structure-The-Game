@@ -13,15 +13,15 @@ public class HouseTest {
     void setUp(){
         territory = new Territory();
         townHall = new TownHall("wasd",territory,100,
-        0,2);
+        0);
     }
     @Test
     void House_instanceHouse_shouldIncreaseMaxPopulationCapacity(){
 
-        assertEquals(0,townHall.getMaxPopulationCapacity(),
-                "Debe devolver 0");
-        House house = new House("ewer", territory, 100, townHall);
         assertEquals(5,townHall.getMaxPopulationCapacity(),
+                "Debe devolver 0");
+        House house = new House("ewer", territory, 100);
+        assertEquals(10,townHall.getMaxPopulationCapacity(),
                 "La cantidad máxima de población debe aumentar en 5");
     }
 }
