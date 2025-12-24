@@ -16,10 +16,17 @@ public class Territory {
     public void setTownHall(TownHall townHall){
         this.townHall = townHall;
     }
+
+    public void setPlayer(Player player){
+        this.owner = player;
+    }
+
     public TownHall getTownHall() {
         return townHall;
     }
-  public Player getPlayerOwner(){
+
+    public Player getPlayerOwner(){
         return owner;
     }
+
 }

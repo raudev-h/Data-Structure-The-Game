@@ -16,10 +16,23 @@ public class GameControler {
     private boolean gameRunning;
 
     //TODO:CONSTRUCTOR
+    public GameControler(){
+        this.gametimer = new GameTimer();
+        this.players = new ArrayList<>();
+        this.gameRunning = false;
+    }
 
     //METHODS
 
+    public void starGame(){
+        gameRunning = true;
+    }
+
     //Clock Methods
+
+    public GameTimer getGameTimer(){
+        return gametimer;
+    }
 
     public boolean pauseClock(){
 
@@ -39,25 +52,26 @@ public class GameControler {
         gametimer.reset();
     }
 
-    //Atack methods TODO: Validar que el target sea vecino en el grafo
-    public AttackResult handleAttack(Player attacker, Territory target) {
-        if ((!gameRunning || gametimer.getElapsedSeconds() < 5*60_000) || (attacker == null || target == null) ||
-                attacker.getKnightAmount() == 0 || target.getPlayerOwner().equals(attacker) ){
+        //Atack methods TODO: Validar que el target sea vecino en el grafo
+        public AttackResult handleAttack(Player attacker, Territory target) {
+            if ((!gameRunning || gametimer.getElapsedSeconds() < 5*60) || (attacker == null || target == null) ||
+                    attacker.getKnightAmount() == 0 || target.getPlayerOwner().equals(attacker) ||
+                    !gameMap.playerCanAttack(attacker, target)){
 
-            return AttackResult.INVALID;
-        }
-        // --- todas las reglas pasadas ---
-
-        AttackResult result = attacker.attack(target);
-
-        if(result.equals(AttackResult.VICTORY)) {
-            for (MilitaryBase mb : target.getTownHall().getMilitaryBases()) {
-                mb.removeAllKnights();
+                return AttackResult.INVALID;
             }
-        }
+            // --- todas las reglas pasadas ---
 
-        return result;// devuelve Victoria o Derrota
-    }
+            AttackResult result = attacker.attack(target);
+
+            if(result.equals(AttackResult.VICTORY)) {
+                for (MilitaryBase mb : target.getTownHall().getMilitaryBases()) {
+                    mb.removeAllKnights();
+                }
+            }
+
+            return result;// devuelve Victoria o Derrota
+        }
 
 
 
