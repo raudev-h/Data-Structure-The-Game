@@ -118,6 +118,7 @@ public class Player {
     public int calculateAttackForce(){
         return getKnightAmount() * Knight.getAttackdamage();
     }
+
     public int calculateTotalDefence(){
         int totalDefence = 0;
 

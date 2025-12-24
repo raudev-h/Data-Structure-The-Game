@@ -38,6 +38,7 @@ public class TownHall {
         this.ownedBuildings = new ArrayList<>();
         this.constructionQueue = new ArrayDeque<>();
     }
+    // GETTERS AND SETTERS
 
     public ResourceCollection getStoredResources() {
         return storedResources;
@@ -78,6 +79,10 @@ public class TownHall {
     public Deque<ConstructionOrder> getConstructionQueue() {
         return constructionQueue;
     }
+
+
+
+    //METHODS
 
     public void increasePopulationCapacity(int amount){
         if (amount > 0) {

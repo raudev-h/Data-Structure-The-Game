@@ -36,6 +36,14 @@ public class GameTimer {
         return isRunning;
     }
 
+    public void forceAttackMode(){
+        isRunning = true;
+        totalGameTime =  5 * 60 * 1000 + 1;
+        startTime = System.currentTimeMillis();
+
+    }
+
+
     /* Devolver el tiempo transcurridp desde que el usuario comenzó el juego o salió
     de la pantalla de pausa + el tiempo juegado anteriormente */
     public long getElapsedSeconds(){
@@ -70,6 +78,7 @@ public class GameTimer {
 
         return String.format("%02d:%02d:%02d", hours, minutes, seconds);
     }
+
 
 
 }
