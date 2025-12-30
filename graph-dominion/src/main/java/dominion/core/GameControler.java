@@ -61,4 +61,28 @@ public class GameControler {
 
 
 
+
+
+
+    public boolean moveUnit(Unit unit, Territory from, Territory to) {
+        if (unit == null || from == null || to == null) {
+            return false; // <- antes estaba vacío
+        }
+
+        if (!from.getUnits().contains(unit)) {
+            return false;
+        }
+
+        if (!gameMap.areAdjacent(from, to)) {
+            return false;
+        }
+
+        from.removeUnit(unit);
+        to.addUnit(unit);
+        unit.setCurrentTerritory(to);
+
+        return true;
+    }
+
 }
+

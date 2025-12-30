@@ -1,4 +1,4 @@
-package dominion.model.buildings;
+ package dominion.menu;
 
 import dominion.model.territories.Territory;
 
