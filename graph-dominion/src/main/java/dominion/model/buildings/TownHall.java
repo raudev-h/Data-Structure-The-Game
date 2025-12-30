@@ -33,7 +33,6 @@ public class TownHall {
         this.currentHealth = currentHealth;
         this.storedResources = new ResourceCollection();
         this.maxPopulationCapacity = INITIAL_CAPACITY;
-        this.workerCreationTime = workerCreationTime;
         this.currentPopulation = 0; // después podemos ajustar esto
         this.ownedBuildings = new ArrayList<>();
         this.constructionQueue = new ArrayDeque<>();
@@ -152,16 +151,36 @@ public class TownHall {
         }
         return false;
     }
+
+    private boolean canStartBuildingCreation(BuildingType type,Map<ResourceType,Integer> cost,int buildTime){
+        if(getStoredResources().canAfford(cost)){
+            return true;
+        }
+        return false;
+    }
+
     public boolean createHouse(){
         final Map<ResourceType,Integer> HOUSE_COST = Map.of(ResourceType.WOOD,60);
         final int HOUSE_BUILD_TIME = 30;
         return startBuildingCreation(BuildingType.HOUSE,HOUSE_COST,HOUSE_BUILD_TIME);
+    }
+    public boolean canCreateHouse(){
+        final Map<ResourceType,Integer> HOUSE_COST = Map.of(ResourceType.WOOD,60);
+        final int HOUSE_BUILD_TIME = 30;
+        return canStartBuildingCreation(BuildingType.HOUSE,HOUSE_COST,HOUSE_BUILD_TIME);
     }
     public boolean createMilitaryBase(){
         final Map<ResourceType,Integer> MILITARY_BASE_COST = Map.of(ResourceType.WOOD,100);
         final int MILITARY_BASE_BUILD_TIME = 50;
         return startBuildingCreation(BuildingType.MILITARY_BASE,MILITARY_BASE_COST,MILITARY_BASE_BUILD_TIME);
     }
+    public boolean canCreateMilitaryBase(){
+        final Map<ResourceType,Integer> MILITARY_BASE_COST = Map.of(ResourceType.WOOD,100);
+        final int MILITARY_BASE_BUILD_TIME = 50;
+        return canStartBuildingCreation(BuildingType.MILITARY_BASE,MILITARY_BASE_COST,MILITARY_BASE_BUILD_TIME);
+    }
+
+
     public void processConstructionQueue(){
         ConstructionOrder currentOrder = constructionQueue.peek();
         if (currentOrder != null){

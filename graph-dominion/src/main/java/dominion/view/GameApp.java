@@ -1,5 +1,12 @@
 package dominion.view;
 
+import com.almasb.fxgl.app.GameController;
+import dominion.core.GameControler;
+import dominion.core.GameMap;
+import dominion.model.buildings.TownHall;
+import dominion.model.players.Player;
+import dominion.model.resources.ResourceType;
+import dominion.model.territories.Territory;
 import javafx.animation.FadeTransition;
 import javafx.animation.ScaleTransition;
 import javafx.animation.TranslateTransition;
@@ -9,6 +16,7 @@ import javafx.geometry.Pos;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.Node;
 import javafx.scene.Scene;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.effect.DropShadow;
@@ -20,9 +28,7 @@ import javafx.scene.paint.LinearGradient;
 import javafx.scene.paint.CycleMethod;
 import javafx.scene.paint.Stop;
 import javafx.scene.shape.Rectangle;
-import javafx.stage.Popup;
-import javafx.stage.Screen;
-import javafx.stage.Stage;
+import javafx.stage.*;
 import javafx.util.Duration;
 
 import java.util.ArrayList;
@@ -40,10 +46,20 @@ public class GameApp extends Application {
     private List<ImageView> placedBuildings = new ArrayList<>(); // Lista de edificios colocados
     private int width = 100;
     private int height = 100;
+    private GameControler gameControler;
+    private Player actualPlayer;
+    private GameMap gameMap;
+    private Territory territory1;
 
 
     @Override
     public void start(Stage stage) {
+        //Configurar Conexion con Backend
+        gameControler = new GameControler();
+        actualPlayer = gameControler.createPlayer("Player1", dominion.core.Color.BLUE);
+        gameMap = gameControler.createGameMap();
+        territory1 = new Territory();
+
         // 1. Obtener tamaño de pantalla
         Rectangle2D screen = Screen.getPrimary().getVisualBounds();
         windowWidth = Math.min(screen.getWidth() * 0.9, 1600);
@@ -82,6 +98,13 @@ public class GameApp extends Application {
         centerStage(stage, windowWidth, windowHeight);
         stage.show();
 
+        createUnitNextToTownHall("leñador", "minero.png", 50);
+        createUnitNextToTownHall("minero", "minero.png", 50);
+        createUnitNextToTownHall("leñador", "Leñador.png", 50);
+
+
+
+
 
 
         // 7. Iniciar timer
@@ -109,6 +132,12 @@ public class GameApp extends Application {
             townHallView.setY(townHallY+100);
 
             placedBuildings.add(townHallView);
+
+            //agregar TownHall al territorio1
+            TownHall townHall1 = new TownHall("1", territory1,100, 5);
+            territory1.setTownHall(townHall1);
+            //Eliminar TODO
+            territory1.getTownHall().getStoredResources().addResource(ResourceType.WOOD, 160);
 
 
             // Efectos visuales
@@ -217,8 +246,8 @@ public class GameApp extends Application {
         buttonContainer.setAlignment(Pos.CENTER);
         buttonContainer.setPadding(new Insets(10, 0, 0, 0));
 
-        Button houseButton = createTextButton("🏠", "Crear Casa", "100 Madera, 50 Oro");
-        Button barracksButton = createTextButton("⚔", "Crear Cuartel", "200 Madera, 150 Oro");
+        Button houseButton = createTextButton("🏠", "Crear Casa", "60 Madera");
+        Button barracksButton = createTextButton("⚔", "Crear Cuartel", "100 Madera");
         Button minerButton = createTextButton("⛏", "Crear Minero", "75 Oro, 25 Madera");
         Button lumberjackButton = createTextButton("", "Crear Leñador", "50 Oro, 50 Madera");
 
@@ -240,13 +269,13 @@ public class GameApp extends Application {
         minerButton.setOnAction(e -> {
             System.out.println("✅ Creando Minero...");
             townHallPopup.hide();
-            createMinerNextToTownHall();
+            createUnitNextToTownHall("minero", "minero.png", 50);
         });
 
         lumberjackButton.setOnAction(e -> {
             System.out.println("✅ Creando Leñador...");
             townHallPopup.hide();
-            showConstructionAnimation("Leñador");
+            createUnitNextToTownHall("leñador", "Leñador.png", 50);
         });
 
         buttonContainer.getChildren().addAll(
@@ -260,252 +289,411 @@ public class GameApp extends Application {
     }
 
     /**
-     * Crea un minero automáticamente cerca del TownHall con búsqueda exhaustiva
+     * Método genérico para crear cualquier unidad (minero, leñador, etc.)
      */
-    private void createMinerNextToTownHall() {
+    private void createUnitNextToTownHall(String unitType, String imageName, double unitSize) {
         try {
             // 1. Obtener posición y tamaño del TownHall
-            // Si tienes guardada la referencia del TownHall, úsala:
-            // double townHallX = townHallView.getX();
-            // double townHallY = townHallView.getY();
-            // double townHallSize = townHallView.getFitWidth();
-
-            // O usa las coordenadas calculadas (ajusta según tu implementación):
             double townHallX = windowWidth * 0.3 - 85 + 100;
             double townHallY = windowHeight * 0.4 - 85 + 100;
             double townHallSize = 170;
 
-            double minerSize = 50;
-            double spacing = 5; // Separación mínima (puede ser 0 para pegado)
+            double spacing = 5; // Separación mínima
 
-            // 2. Lista de posiciones a probar (en orden de preferencia)
-            List<Position> positionsToTry = new ArrayList<>();
+            // 2. Buscar posición válida
+            Position validPosition = findPositionForUnit(townHallX, townHallY, townHallSize, unitSize, spacing, unitType);
 
-            // Primera ronda: Posiciones inmediatamente alrededor del TownHall
-            // Derecha, izquierda, arriba, abajo
-            positionsToTry.add(new Position(townHallX + townHallSize + spacing,
-                    townHallY + (townHallSize - minerSize) / 2));
-            positionsToTry.add(new Position(townHallX - minerSize - spacing,
-                    townHallY + (townHallSize - minerSize) / 2));
-            positionsToTry.add(new Position(townHallX + (townHallSize - minerSize) / 2,
-                    townHallY - minerSize - spacing));
-            positionsToTry.add(new Position(townHallX + (townHallSize - minerSize) / 2,
-                    townHallY + townHallSize + spacing));
-
-            // Segunda ronda: Diagonales
-            positionsToTry.add(new Position(townHallX - minerSize - spacing,
-                    townHallY - minerSize - spacing));
-            positionsToTry.add(new Position(townHallX + townHallSize + spacing,
-                    townHallY - minerSize - spacing));
-            positionsToTry.add(new Position(townHallX - minerSize - spacing,
-                    townHallY + townHallSize + spacing));
-            positionsToTry.add(new Position(townHallX + townHallSize + spacing,
-                    townHallY + townHallSize + spacing));
-
-            // Tercera ronda: Más lejos del TownHall (radio expandido)
-            double extendedSpacing = 40;
-            for (int i = 0; i < 8; i++) {
-                double angle = Math.PI / 4 * i;
-                double offsetX = Math.cos(angle) * (townHallSize/2 + minerSize/2 + extendedSpacing);
-                double offsetY = Math.sin(angle) * (townHallSize/2 + minerSize/2 + extendedSpacing);
-                positionsToTry.add(new Position(
-                        townHallX + townHallSize/2 - minerSize/2 + offsetX,
-                        townHallY + townHallSize/2 - minerSize/2 + offsetY
-                ));
-            }
-
-            // 3. Buscar posición válida
-            Position validPosition = null;
-
-            for (Position pos : positionsToTry) {
-                if (!checkCollision(pos.x, pos.y, minerSize, minerSize) &&
-                        pos.x >= 0 && pos.y >= 0 &&
-                        pos.x + minerSize <= windowWidth &&
-                        pos.y + minerSize <= windowHeight) {
-
-                    validPosition = pos;
-                    break;
-                }
-            }
-
-            // 4. Si no hay posición libre alrededor del TownHall, buscar junto a otros mineros
+            // 3. Si no hay posición, mostrar error
             if (validPosition == null) {
-                System.out.println("⚠️ No hay espacio alrededor del TownHall, buscando junto a otros mineros...");
-                validPosition = findPositionNextToOtherMiner(minerSize, spacing);
-            }
-
-            // 5. Si aún no hay posición, mostrar error
-            if (validPosition == null) {
-                System.out.println("❌ No hay espacio disponible en ninguna parte");
+                System.out.println("❌ No hay espacio disponible para el " + unitType);
                 return;
             }
 
-            // 6. Crear el minero en la posición encontrada
-            createMinerAtPosition(validPosition.x, validPosition.y, minerSize);
+            // 4. Crear la unidad en la posición encontrada
+            createUnitAtPosition(unitType, imageName, validPosition.x, validPosition.y, unitSize);
 
         } catch (Exception e) {
-            System.err.println("❌ Error al crear minero: " + e.getMessage());
+            System.err.println("❌ Error al crear " + unitType + ": " + e.getMessage());
         }
     }
 
     /**
-     * Busca una posición junto a otros mineros existentes
+     * Busca posición para una unidad
      */
-    private Position findPositionNextToOtherMiner(double minerSize, double spacing) {
-        // Obtener todos los mineros existentes (puedes rastrearlos en una lista)
-        List<ImageView> existingMiners = getExistingMiners();
+    private Position findPositionForUnit(double townHallX, double townHallY, double townHallSize,
+                                         double unitSize, double spacing, String unitType) {
 
-        if (existingMiners.isEmpty()) {
-            // Si no hay mineros, usar una posición por defecto
-            return new Position(50, 50); // Esquina superior izquierda
-        }
+        System.out.println("🔍 Buscando posición para " + unitType + "...");
 
-        // Probar alrededor de cada minero existente
-        for (ImageView miner : existingMiners) {
-            double minerX = miner.getX();
-            double minerY = miner.getY();
+        // Crear lista de todas las posiciones a probar
+        List<Position> positionsToTry = new ArrayList<>();
 
-            // Posiciones alrededor del minero actual
-            Position[] positionsAround = {
-                    new Position(minerX + minerSize + spacing, minerY), // Derecha
-                    new Position(minerX - minerSize - spacing, minerY), // Izquierda
-                    new Position(minerX, minerY - minerSize - spacing), // Arriba
-                    new Position(minerX, minerY + minerSize + spacing), // Abajo
-                    new Position(minerX + minerSize + spacing, minerY - minerSize - spacing), // Diagonal superior derecha
-                    new Position(minerX - minerSize - spacing, minerY - minerSize - spacing), // Diagonal superior izquierda
-                    new Position(minerX + minerSize + spacing, minerY + minerSize + spacing), // Diagonal inferior derecha
-                    new Position(minerX - minerSize - spacing, minerY + minerSize + spacing)  // Diagonal inferior izquierda
-            };
+        // Radio cercano al TownHall (primera prioridad)
+        generatePositionsAroundPoint(positionsToTry,
+                townHallX + townHallSize/2,
+                townHallY + townHallSize/2,
+                townHallSize/2 + unitSize + spacing,
+                16, unitSize);
 
-            // Verificar cada posición
-            for (Position pos : positionsAround) {
-                if (!checkCollision(pos.x, pos.y, minerSize, minerSize) &&
-                        pos.x >= 0 && pos.y >= 0 &&
-                        pos.x + minerSize <= windowWidth &&
-                        pos.y + minerSize <= windowHeight) {
+        // Radio medio (segunda prioridad)
+        generatePositionsAroundPoint(positionsToTry,
+                townHallX + townHallSize/2,
+                townHallY + townHallSize/2,
+                townHallSize + unitSize * 3,
+                24, unitSize);
 
-                    System.out.println("✅ Encontrada posición junto a otro minero");
-                    return pos;
-                }
+        // Buscar posición válida
+        for (Position pos : positionsToTry) {
+            if (!checkCollisionForUnit(pos.x, pos.y, unitSize, unitSize, unitType) &&
+                    pos.x >= 0 && pos.y >= 0 &&
+                    pos.x + unitSize <= windowWidth &&
+                    pos.y + unitSize <= windowHeight) {
+
+                System.out.println("✅ Posición encontrada para " + unitType +
+                        " en: (" + (int)pos.x + ", " + (int)pos.y + ")");
+                return pos;
             }
         }
 
-        // Si no hay espacio junto a mineros existentes, buscar cualquier espacio libre
-        return findAnyFreeSpace(minerSize, spacing);
+        // Si no hay espacio cercano, buscar cerca de otras unidades del mismo tipo
+        System.out.println("⚠️ No hay espacio cerca del TownHall, buscando junto a otros " + unitType + "s...");
+        return findPositionNextToOtherUnits(unitType, unitSize, spacing);
     }
 
     /**
-     * Busca cualquier espacio libre en el mapa (último recurso)
+     * Genera posiciones alrededor de un punto
      */
-    private Position findAnyFreeSpace(double minerSize, double spacing) {
-        // Buscar en una cuadrícula por todo el mapa
-        int gridSize = 20;
-        double cellSize = minerSize + spacing;
+    private void generatePositionsAroundPoint(List<Position> positions,
+                                              double centerX, double centerY,
+                                              double radius, int numPoints, double unitSize) {
+        for (int i = 0; i < numPoints; i++) {
+            double angle = 2 * Math.PI * i / numPoints;
+            double x = centerX + Math.cos(angle) * radius - unitSize/2;
+            double y = centerY + Math.sin(angle) * radius - unitSize/2;
+            positions.add(new Position(x, y));
+        }
+    }
 
-        for (int row = 0; row < gridSize; row++) {
-            for (int col = 0; col < gridSize; col++) {
-                double x = col * cellSize;
-                double y = row * cellSize;
+    /**
+     * Verifica colisiones para una unidad (permite que se agrupen unidades del mismo tipo)
+     */
 
-                if (!checkCollision(x, y, minerSize, minerSize) &&
-                        x + minerSize <= windowWidth &&
-                        y + minerSize <= windowHeight) {
+    private boolean checkCollisionForUnit(double x, double y, double width, double height, String unitType) {
+        Rectangle newBounds = new Rectangle(x, y, width, height);
 
-                    System.out.println("✅ Encontrado espacio libre en cuadrícula: (" + (int)x + ", " + (int)y + ")");
-                    return new Position(x, y);
-                }
-            }
+        // 1. Verificar límites del mapa
+        if (x < 0 || y < 0 || x + width > windowWidth || y + height > windowHeight) {
+            return true; // Fuera de los límites
         }
 
-        return null; // No hay espacio libre en absoluto
-    }
-
-    /**
-     * Obtiene todos los mineros existentes
-     */
-    private List<ImageView> getExistingMiners() {
-        List<ImageView> miners = new ArrayList<>();
-
-        // Buscar todos los ImageView que sean mineros
-        // (Podrías usar una etiqueta o propiedad para identificarlos)
+        // 2. Verificar TODAS las unidades existentes (sin importar el tipo)
         for (Node node : root.getChildren()) {
             if (node instanceof ImageView && node != buildingGhost) {
-                ImageView imageView = (ImageView) node;
-                // Asumiendo que los mineros tienen tamaño 80px
-                if (imageView.getFitWidth() == 80 && imageView.getFitHeight() == 80) {
-                    miners.add(imageView);
+                ImageView existing = (ImageView) node;
+
+                // Verificar si es una unidad (tamaño 50x50)
+                if (existing.getFitWidth() == 50 && existing.getFitHeight() == 50) {
+                    Rectangle existingBounds = new Rectangle(
+                            existing.getX(),
+                            existing.getY(),
+                            existing.getFitWidth(),
+                            existing.getFitHeight()
+                    );
+
+                    // IMPORTANTE: Verificar colisión con CUALQUIER unidad existente
+                    // No solo con unidades del mismo tipo
+                    if (newBounds.intersects(existingBounds.getBoundsInLocal())) {
+                        System.out.println("⚠️ Colisión detectada con otra unidad en: (" +
+                                (int)existing.getX() + ", " + (int)existing.getY() + ")");
+                        return true;
+                    }
                 }
             }
         }
 
-        return miners;
+        // 3. Verificar colisión con edificios (100x100 o más grandes)
+        for (Node node : root.getChildren()) {
+            if (node instanceof ImageView && node != buildingGhost) {
+                ImageView existing = (ImageView) node;
+
+                // Verificar si es un edificio (tamaño 100x100 o más)
+                if (existing.getFitWidth() >= 100 || existing.getFitHeight() >= 100) {
+                    Rectangle existingBounds = new Rectangle(
+                            existing.getX(),
+                            existing.getY(),
+                            existing.getFitWidth(),
+                            existing.getFitHeight()
+                    );
+
+                    // Añadir margen de seguridad alrededor de edificios
+                    Rectangle paddedBounds = new Rectangle(
+                            existingBounds.getX() - 10,
+                            existingBounds.getY() - 10,
+                            existingBounds.getWidth() + 20,
+                            existingBounds.getHeight() + 20
+                    );
+
+                    if (newBounds.intersects(paddedBounds.getBoundsInLocal())) {
+                        System.out.println("⚠️ Colisión detectada con edificio en: (" +
+                                (int)existing.getX() + ", " + (int)existing.getY() + ")");
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false; // Espacio libre
     }
-
     /**
-     * Crea el minero en una posición específica
+     * Crea una unidad en una posición específica
      */
-    private void createMinerAtPosition(double x, double y, double size) {
+    private void createUnitAtPosition(String unitType, String imageName, double x, double y, double size) {
         try {
-            // Cargar imagen del minero
-            String imagePath = "file:src/main/resources/images/minero.png";
-            Image minerImage = new Image(imagePath);
+            // Cargar imagen de la unidad
+            String imagePath = "file:src/main/resources/images/" + imageName;
+            Image unitImage = new Image(imagePath);
 
-            // Crear ImageView del minero
-            ImageView minerView = new ImageView(minerImage);
-            minerView.setFitWidth(size);
-            minerView.setFitHeight(size);
-            minerView.setPreserveRatio(true);
-            minerView.setX(x);
-            minerView.setY(y);
+            // Crear ImageView de la unidad
+            ImageView unitView = new ImageView(unitImage);
+            unitView.setFitWidth(size);
+            unitView.setFitHeight(size);
+            unitView.setPreserveRatio(true);
+            unitView.setX(x);
+            unitView.setY(y);
 
-            // Añadir etiqueta para identificarlo como minero
-            minerView.setId("miner_" + System.currentTimeMillis());
+            // Añadir etiqueta para identificarla
+            unitView.setId(unitType + "_" + System.currentTimeMillis());
 
-            // Añadir efectos visuales
+            // Añadir efectos visuales específicos según el tipo
             DropShadow shadow = new DropShadow();
-            shadow.setColor(Color.rgb(0, 0, 0, 0.4));
+            if (unitType.equals("minero")) {
+                shadow.setColor(Color.rgb(184, 134, 11, 0.6)); // Dorado para mineros
+            } else if (unitType.equals("leñador")) {
+                shadow.setColor(Color.rgb(34, 139, 34, 0.6)); // Verde para leñadores
+            } else {
+                shadow.setColor(Color.rgb(0, 0, 0, 0.4));
+            }
             shadow.setRadius(8);
-            minerView.setEffect(shadow);
+            unitView.setEffect(shadow);
 
             // Animación de aparición
-            FadeTransition fade = new FadeTransition(Duration.millis(300), minerView);
+            FadeTransition fade = new FadeTransition(Duration.millis(300), unitView);
             fade.setFromValue(0.0);
             fade.setToValue(1.0);
 
-            ScaleTransition scale = new ScaleTransition(Duration.millis(300), minerView);
+            ScaleTransition scale = new ScaleTransition(Duration.millis(300), unitView);
             scale.setFromX(0.3);
             scale.setFromY(0.3);
             scale.setToX(1.0);
             scale.setToY(1.0);
 
             // Añadir al root
-            root.getChildren().add(minerView);
+            root.getChildren().add(unitView);
 
-            // Hacerlo interactivo
-            //makeMinerInteractive(minerView);
 
             // Reproducir animaciones
             javafx.animation.ParallelTransition parallel =
                     new javafx.animation.ParallelTransition(fade, scale);
             parallel.play();
 
-            System.out.println("✅ Minero creado en: (" + (int)x + ", " + (int)y + ")");
+            System.out.println("✅ " + unitType + " creado en: (" + (int)x + ", " + (int)y + ")");
+
+            // Mostrar mensaje de éxito con emoji específico
+            String emoji = unitType.equals("minero") ? "⛏️" : "🪓";
 
         } catch (Exception e) {
-            System.err.println("❌ Error al crear minero: " + e.getMessage());
+            System.err.println("❌ Error al crear " + unitType + ": " + e.getMessage());
             throw e;
         }
     }
 
-    private void makeMinerInteractive(ImageView minerView) {
-        // 1. Hacer clicable
-        minerView.setOnMouseClicked(e -> {
-            System.out.println("⛏️ Minero seleccionado");
-            e.consume(); // Evitar que el evento se propague
+    /**
+     * Capitaliza la primera letra de un string
+     */
+    private String capitalize(String str) {
+        if (str == null || str.isEmpty()) return str;
+        return str.substring(0, 1).toUpperCase() + str.substring(1);
+    }
 
-        });
+    /**
+     * Determina si un ImageView es de un tipo específico de unidad
+     */
+    private boolean isUnitType(ImageView imageView, String unitType) {
+        // Podemos identificar por tamaño (50x50) o por etiqueta
+        if (imageView.getFitWidth() == 50 && imageView.getFitHeight() == 50) {
+            // Verificar por nombre de archivo o propiedad
+            if (imageView.getId() != null && imageView.getId().startsWith(unitType)) {
+                return true;
+            }
+        }
+        return false;
+    }
 
+    /**
+     * Busca posición junto a otras unidades del mismo tipo (MEJORADO)
+     */
+    private Position findPositionNextToOtherUnits(String unitType, double unitSize, double spacing) {
+        List<ImageView> existingUnits = getExistingUnits(unitType);
 
+        if (existingUnits.isEmpty()) {
+            System.out.println("📭 No hay " + unitType + "s existentes, buscando espacio libre...");
+            return findAnyFreeSpace(unitSize, spacing);
+        }
+
+        System.out.println("🔍 Buscando junto a " + existingUnits.size() + " " + unitType + "s existentes...");
+
+        // Probar alrededor de cada unidad existente
+        for (ImageView unit : existingUnits) {
+            double unitX = unit.getX();
+            double unitY = unit.getY();
+
+            // Generar 8 posiciones alrededor (como puntos de una rosa de los vientos)
+            Position[] positionsAround = {
+                    new Position(unitX + unitSize + spacing, unitY), // Este
+                    new Position(unitX - unitSize - spacing, unitY), // Oeste
+                    new Position(unitX, unitY - unitSize - spacing), // Norte
+                    new Position(unitX, unitY + unitSize + spacing), // Sur
+                    new Position(unitX + unitSize + spacing, unitY - unitSize - spacing), // Noreste
+                    new Position(unitX - unitSize - spacing, unitY - unitSize - spacing), // Noroeste
+                    new Position(unitX + unitSize + spacing, unitY + unitSize + spacing), // Sureste
+                    new Position(unitX - unitSize - spacing, unitY + unitSize - spacing)  // Suroeste
+            };
+
+            // Verificar cada posición
+            for (Position pos : positionsAround) {
+                if (!checkCollisionForUnit(pos.x, pos.y, unitSize, unitSize, unitType) &&
+                        pos.x >= 0 && pos.y >= 0 &&
+                        pos.x + unitSize <= windowWidth &&
+                        pos.y + unitSize <= windowHeight) {
+
+                    System.out.println("✅ Encontrada posición junto a otro " + unitType +
+                            " en: (" + (int)pos.x + ", " + (int)pos.y + ")");
+                    return pos;
+                }
+            }
+        }
+
+        // Si no hay espacio junto a unidades existentes, buscar cualquier espacio libre
+        System.out.println("⚠️ No hay espacio junto a " + unitType + "s existentes, buscando en todo el mapa...");
+        return findAnyFreeSpace(unitSize, spacing);
+    }
+
+    /**
+     * Busca cualquier espacio libre en el mapa (último recurso)
+     */
+    private Position findAnyFreeSpace(double unitSize, double spacing) {
+        System.out.println("🔍 Buscando espacio libre en todo el mapa...");
+
+        // Crear una cuadrícula para buscar espacios
+        int gridCols = (int) (windowWidth / (unitSize + spacing));
+        int gridRows = (int) (windowHeight / (unitSize + spacing));
+
+        // Primero, buscar cerca del TownHall (radio más grande)
+        double townHallCenterX = windowWidth * 0.3 + 15; // Centro del TownHall
+        double townHallCenterY = windowHeight * 0.4 + 15;
+        double searchRadius = 300; // Radio amplio de búsqueda
+
+        // Buscar en anillos concéntricos alrededor del TownHall
+        for (int radius = 1; radius <= 10; radius++) {
+            double currentRadius = searchRadius * (radius / 10.0);
+
+            // Buscar en puntos alrededor del círculo
+            for (int i = 0; i < 16; i++) {
+                double angle = 2 * Math.PI * i / 16;
+                double x = townHallCenterX + Math.cos(angle) * currentRadius - unitSize/2;
+                double y = townHallCenterY + Math.sin(angle) * currentRadius - unitSize/2;
+
+                // Asegurar que esté dentro de los límites
+                x = Math.max(0, Math.min(x, windowWidth - unitSize));
+                y = Math.max(0, Math.min(y, windowHeight - unitSize));
+
+                if (!checkCollisionForUnit(x, y, unitSize, unitSize, "unidad") &&
+                        x >= 0 && y >= 0 &&
+                        x + unitSize <= windowWidth &&
+                        y + unitSize <= windowHeight) {
+
+                    System.out.println("✅ Espacio encontrado en radio " + (int)currentRadius +
+                            "px del TownHall");
+                    return new Position(x, y);
+                }
+            }
+        }
+
+        // Si no se encuentra cerca del TownHall, buscar en cuadrícula por todo el mapa
+        System.out.println("🌍 Buscando en cuadrícula por todo el mapa...");
+
+        // Dividir el mapa en celdas y buscar
+        double cellSize = unitSize + spacing * 2;
+        int cols = (int) (windowWidth / cellSize);
+        int rows = (int) (windowHeight / cellSize);
+
+        // Buscar de forma aleatoria pero sistemática
+        java.util.Random random = new java.util.Random();
+
+        for (int attempt = 0; attempt < cols * rows * 2; attempt++) {
+            int col = random.nextInt(cols);
+            int row = random.nextInt(rows);
+
+            double x = col * cellSize + spacing;
+            double y = row * cellSize + spacing;
+
+            // Asegurar que no salga de los límites
+            if (x + unitSize > windowWidth) continue;
+            if (y + unitSize > windowHeight) continue;
+
+            if (!checkCollisionForUnit(x, y, unitSize, unitSize, "unidad")) {
+                System.out.println("✅ Espacio encontrado en cuadrícula (" + col + ", " + row + ")");
+                return new Position(x, y);
+            }
+        }
+
+        // Último intento: búsqueda exhaustiva celda por celda
+        System.out.println("⏳ Búsqueda exhaustiva...");
+
+        for (int row = 0; row < rows; row++) {
+            for (int col = 0; col < cols; col++) {
+                double x = col * cellSize + spacing;
+                double y = row * cellSize + spacing;
+
+                if (x + unitSize > windowWidth || y + unitSize > windowHeight) {
+                    continue;
+                }
+
+                if (!checkCollisionForUnit(x, y, unitSize, unitSize, "unidad")) {
+                    System.out.println("✅ Espacio encontrado en (" + col + ", " + row + ") después de búsqueda exhaustiva");
+                    return new Position(x, y);
+                }
+            }
+        }
+
+        // Si llegamos aquí, el mapa está completamente lleno
+        System.out.println("❌ El mapa está completamente lleno");
+        return null;
+    }
+
+    /**
+     * Obtiene todas las unidades existentes de un tipo específico
+     */
+    private List<ImageView> getExistingUnits(String unitType) {
+        List<ImageView> units = new ArrayList<>();
+
+        for (Node node : root.getChildren()) {
+            if (node instanceof ImageView && node != buildingGhost) {
+                ImageView imageView = (ImageView) node;
+                // Asumiendo que las unidades tienen tamaño 50px
+                if (imageView.getFitWidth() == 50
+                        && imageView.getFitHeight() == 50) {
+                    // Filtrar por tipo si es necesario
+                    if (imageView.getId() != null && imageView.getId().startsWith(unitType)) {
+                        units.add(imageView);
+                    } else if (unitType.equals("unidad")) { // Caso genérico
+                        units.add(imageView);
+                    }
+                }
+            }
+        }
+
+        return units;
     }
 
     /**
@@ -521,86 +709,179 @@ public class GameApp extends Application {
         }
     }
 
-    /**
-     * Método mejorado de checkCollision que ignora a otros mineros al buscar espacio
-     */
-    private boolean checkCollisionForMiner(double x, double y, double width, double height) {
-        Rectangle newBounds = new Rectangle(x, y, width, height);
 
-        for (Node node : root.getChildren()) {
-            if (node instanceof ImageView && node != buildingGhost) {
-                ImageView existing = (ImageView) node;
-
-                // Ignorar otros mineros (tamaño 80x80)
-                if (existing.getFitWidth() == 80 && existing.getFitHeight() == 80) {
-                    continue; // Saltar mineros, permitir que se agrupen
-                }
-
-                Rectangle existingBounds = new Rectangle(
-                        existing.getX(),
-                        existing.getY(),
-                        existing.getFitWidth(),
-                        existing.getFitHeight()
-                );
-
-                if (newBounds.intersects(existingBounds.getBoundsInLocal())) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
 
 
 
     private void enterBuildingMode(String buildingType) {
         this.isBuildingMode = true;
         this.currentBuildingType = buildingType;
+        boolean construir = true;
+
+        if(currentBuildingType.equalsIgnoreCase("Casa"))
+            construir = territory1.getTownHall().canCreateHouse();
+        else if(currentBuildingType.equalsIgnoreCase("Cuartel"))
+            construir = territory1.getTownHall().canCreateMilitaryBase();
+
+        if(construir){
 
 
-        try {
-            // Cargar la imagen correspondiente
-            String imagePath = "file:src/main/resources/images/" +
-                    buildingType + ".png";
-            Image buildingImage = new Image(imagePath);
+                try {
+                    // Cargar la imagen correspondiente
+                    String imagePath = "file:src/main/resources/images/" +
+                            buildingType + ".png";
+                    Image buildingImage = new Image(imagePath);
 
-            // Configurar el fantasma (imagen semi-transparente)
-            buildingGhost.setImage(buildingImage);
-            if(buildingType.equalsIgnoreCase("Cuartel")) {
-                width = 170;
-                height = 170;
-            }
-            else{
-                width = 100;
-                height = 100;
+                    // Configurar el fantasma (imagen semi-transparente)
+                    buildingGhost.setImage(buildingImage);
+                    if (buildingType.equalsIgnoreCase("Cuartel")) {
+                        width = 170;
+                        height = 170;
+                    } else {
+                        width = 100;
+                        height = 100;
 
-            }
+                    }
 
-            buildingGhost.setFitWidth(width); // Tamaño ajustable
-            buildingGhost.setFitHeight(height);
-            buildingGhost.setPreserveRatio(true);
-            buildingGhost.setOpacity(0.6); // 60% de opacidad para ver dónde se coloca
-            buildingGhost.setVisible(true);
+                    buildingGhost.setFitWidth(width); // Tamaño ajustable
+                    buildingGhost.setFitHeight(height);
+                    buildingGhost.setPreserveRatio(true);
+                    buildingGhost.setOpacity(0.6); // 60% de opacidad para ver dónde se coloca
+                    buildingGhost.setVisible(true);
 
-            // Cambiar cursor para indicar modo construcción
-            root.setCursor(javafx.scene.Cursor.CROSSHAIR);
+                    // Cambiar cursor para indicar modo construcción
+                    root.setCursor(javafx.scene.Cursor.CROSSHAIR);
 
-            System.out.println("✅ Modo construcción activado para: " + buildingType);
-            System.out.println("💡 Haz clic en cualquier lugar del mapa para colocar el edificio");
-            System.out.println("⎋ Presiona ESC para cancelar");
+                    System.out.println("✅ Modo construcción activado para: " + buildingType);
+                    System.out.println("💡 Haz clic en cualquier lugar del mapa para colocar el edificio");
+                    System.out.println("⎋ Presiona ESC para cancelar");
 
-            // Agregar listener para cancelar con ESC
-            root.getScene().setOnKeyPressed(event -> {
-                if (event.getCode() == javafx.scene.input.KeyCode.ESCAPE) {
-                    cancelBuildingMode();
+                    // Agregar listener para cancelar con ESC
+                    root.getScene().setOnKeyPressed(event -> {
+                        if (event.getCode() == javafx.scene.input.KeyCode.ESCAPE) {
+                            cancelBuildingMode();
+                        }
+                    });
+
+                } catch (Exception ex) {
+                    System.err.println("❌ Error al cargar imagen del edificio: " + ex.getMessage());
+
                 }
-            });
+            }
+        else{
+                // Crear Stage para el warning
+                Stage warningStage = new Stage();
+                warningStage.initModality(Modality.APPLICATION_MODAL);
+                warningStage.initStyle(StageStyle.TRANSPARENT); // Sin bordes de ventana
+                warningStage.setTitle("Materiales insuficientes");
 
-        } catch (Exception e) {
-            System.err.println("❌ Error al cargar imagen del edificio: " + e.getMessage());
-            cancelBuildingMode();
-        }
+                // Panel principal con el MISMO estilo transparente
+                VBox warningPanel = new VBox(15);
+                warningPanel.setPadding(new Insets(25, 30, 25, 30));
+                warningPanel.setAlignment(Pos.CENTER);
+                warningPanel.setStyle(
+                        "-fx-background-color: rgba(255, 255, 255, 0.50); " + // MISMA opacidad 50%
+                                "-fx-background-radius: 15; " +
+                                "-fx-border-color: #dcdde1; " +
+                                "-fx-border-width: 1; " +
+                                "-fx-border-radius: 15; " +
+                                "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0.5, 0, 2);"
+                );
+
+                // Icono de advertencia (usa tu fuente de iconos)
+                Label warningIcon = new Label("⚠");
+                warningIcon.setStyle("-fx-font-size: 36px; -fx-padding: 0 0 5 0;");
+
+                // Mensaje con el MISMO estilo
+                VBox messageContainer = new VBox(5);
+                messageContainer.setAlignment(Pos.CENTER);
+
+                Label titleLabel = new Label("Materiales insuficientes");
+                titleLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;");
+
+                Label detailLabel = new Label("No tienes los recursos necesarios\npara construir este edificio");
+                detailLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #000000; -fx-text-alignment: center;");
+                detailLabel.setWrapText(true);
+
+                messageContainer.getChildren().addAll(titleLabel, detailLabel);
+
+                // Botón "Entendido" con el MISMO estilo
+                Button okButton = new Button("Entendido");
+                okButton.setPrefWidth(150);
+                okButton.setPrefHeight(38);
+                okButton.setStyle(
+                        "-fx-background-color: rgba(255, 255, 255, 0.5); " + // 50% de opacidad
+                                "-fx-background-radius: 6; " +
+                                "-fx-border-color: #dcdde1; " +
+                                "-fx-border-width: 1; " +
+                                "-fx-border-radius: 6; " +
+                                "-fx-cursor: hand; " +
+                                "-fx-text-fill: #2c3e50; " +
+                                "-fx-font-size: 12px; " +
+                                "-fx-font-weight: bold;"
+                );
+
+                // Efecto hover IDÉNTICO
+                okButton.setOnMouseEntered(e -> {
+                    okButton.setStyle(
+                            "-fx-background-color: rgba(236, 240, 241, 0.5); " + // 50% de opacidad
+                                    "-fx-background-radius: 6; " +
+                                    "-fx-border-color: #3498db; " +
+                                    "-fx-border-width: 1.5; " +
+                                    "-fx-border-radius: 6; " +
+                                    "-fx-cursor: hand; " +
+                                    "-fx-text-fill: #2c3e50; " +
+                                    "-fx-font-size: 12px; " +
+                                    "-fx-font-weight: bold; " +
+                                    "-fx-effect: dropshadow(gaussian, rgba(52, 152, 219, 0.3), 5, 0.5, 0, 1);"
+                    );
+                });
+
+                okButton.setOnMouseExited(e -> {
+                    okButton.setStyle(
+                            "-fx-background-color: rgba(255, 255, 255, 0.5); " + // 50% de opacidad
+                                    "-fx-background-radius: 6; " +
+                                    "-fx-border-color: #dcdde1; " +
+                                    "-fx-border-width: 1; " +
+                                    "-fx-border-radius: 6; " +
+                                    "-fx-cursor: hand; " +
+                                    "-fx-text-fill: #2c3e50; " +
+                                    "-fx-font-size: 12px; " +
+                                    "-fx-font-weight: bold; " +
+                                    "-fx-effect: null;"
+                    );
+                });
+
+                okButton.setOnAction(e -> {
+                    warningStage.close();
+                    cancelBuildingMode();
+                });
+
+                // Añadir al panel
+                warningPanel.getChildren().addAll(warningIcon, messageContainer, okButton);
+
+                // Crear StackPane para centrar y agregar fondo transparente
+                StackPane rootPane = new StackPane(warningPanel);
+                rootPane.setStyle("-fx-background-color: transparent;");
+                rootPane.setAlignment(Pos.CENTER);
+
+                // Escena
+                Scene warningScene = new Scene(rootPane, 300, 250);
+                warningScene.setFill(Color.TRANSPARENT);
+
+                // Posicionar en el centro de la ventana principal
+                warningStage.initOwner(root.getScene().getWindow());
+                warningStage.setScene(warningScene);
+                warningStage.setResizable(false);
+
+                // Mostrar y esperar
+                warningStage.showAndWait();
+
+            this.isBuildingMode = false;
+            this.currentBuildingType = null;
+            buildingGhost.setVisible(false);
+            root.setCursor(javafx.scene.Cursor.DEFAULT);
+            }
     }
 
     private void cancelBuildingMode() {
@@ -618,19 +899,19 @@ public class GameApp extends Application {
         if (!isBuildingMode) return;
 
         // Calcular posición centrada
-        double buildingWidth = width; // Mismo tamaño que el fantasma
+        double buildingWidth = width;
         double buildingHeight = height;
         double posX = x - buildingWidth / 2;
         double posY = y - buildingHeight / 2;
 
-        // Verificar colisiones
+        // Verificar colisiones PRIMERO
         if (checkCollision(posX, posY, buildingWidth, buildingHeight)) {
             System.out.println("❌ No se puede construir aquí - Colisión detectada");
             showCollisionFeedback();
-            return; // No colocar el edificio
+            return;
         }
 
-        // También verificar que esté dentro de los límites del mapa
+        // Verificar límites del mapa
         if (posX < 0 || posY < 0 ||
                 posX + buildingWidth > windowWidth ||
                 posY + buildingHeight > windowHeight) {
@@ -639,30 +920,44 @@ public class GameApp extends Application {
             return;
         }
 
+        // INTENTAR CREAR EL EDIFICIO EN EL BACKEND PRIMERO
+        boolean creado = false;
+
+        if(currentBuildingType.equalsIgnoreCase("Casa")){
+            creado = territory1.getTownHall().createHouse(); // Esto gastará recursos
+        }
+        else if(currentBuildingType.equalsIgnoreCase("Cuartel")){
+            creado = territory1.getTownHall().createMilitaryBase(); // Esto gastará recursos
+        }
+
+        // Si NO se pudo crear (debería ser raro ya que verificamos con canCreate)
+        if (!creado) {
+            System.out.println("❌ Error: No se pudo crear el edificio en el backend");
+            cancelBuildingMode();
+            return;
+        }
+
+        // Si SÍ se creó exitosamente, ahora mostrar visualmente
         try {
-            // Cargar la imagen del edificio
             String imagePath = "file:src/main/resources/images/" +
                     currentBuildingType + ".png";
             Image buildingImage = new Image(imagePath);
 
-            // Crear ImageView para el edificio real
             ImageView buildingView = new ImageView(buildingImage);
             buildingView.setFitWidth(buildingWidth);
             buildingView.setFitHeight(buildingHeight);
             buildingView.setPreserveRatio(true);
-
-            // Posicionar el edificio
             buildingView.setX(posX);
             buildingView.setY(posY);
 
-            // Añadir efectos visuales
+            // Efectos visuales
             DropShadow shadow = new DropShadow();
             shadow.setColor(Color.rgb(0, 0, 0, 0.5));
             shadow.setRadius(10);
             shadow.setSpread(0.1);
             buildingView.setEffect(shadow);
 
-            // Animación de aparición
+            // Animación
             FadeTransition fade = new FadeTransition(Duration.millis(500), buildingView);
             fade.setFromValue(0.0);
             fade.setToValue(1.0);
@@ -677,23 +972,19 @@ public class GameApp extends Application {
                     new javafx.animation.ParallelTransition(fade, scale);
             parallel.play();
 
-            // Añadir al root
+            // Añadir a la escena
             root.getChildren().add(buildingView);
-
-            // Añadir a la lista de edificios colocados
             placedBuildings.add(buildingView);
-
-            // Hacer el edificio interactivo
             makeBuildingInteractive(buildingView, currentBuildingType);
 
             System.out.println("✅ " + currentBuildingType + " construido en: (" +
                     (int)posX + ", " + (int)posY + ")");
 
-            // Salir del modo construcción
             cancelBuildingMode();
 
         } catch (Exception e) {
-            System.err.println("❌ Error al colocar edificio: " + e.getMessage());
+            System.err.println("❌ Error al colocar edificio visualmente: " + e.getMessage());
+
             cancelBuildingMode();
         }
     }

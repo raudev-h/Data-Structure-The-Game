@@ -16,6 +16,10 @@ public class GameControler {
     private boolean gameRunning;
 
     //TODO:CONSTRUCTOR
+    public GameControler(){
+        gameRunning = true;
+        players = new ArrayList<>();
+    }
 
     //METHODS
 
@@ -59,6 +63,18 @@ public class GameControler {
         return result;// devuelve Victoria o Derrota
     }
 
+    //Player
+    public Player createPlayer(String nombre, Color color){
+        Player newPlayer = new Player(nombre, color);
+        players.add(newPlayer);
+
+        return newPlayer;
+    }
+
+    public GameMap createGameMap(){
+        GameMap gameMap = new GameMap();
+        return  gameMap;
+    }
 
 
 }
