@@ -71,6 +71,10 @@ public class GameTimer {
         return String.format("%02d:%02d:%02d", hours, minutes, seconds);
     }
 
+    public String getTime(){
+        return  secondToHour(this.getElapsedSeconds());
+    }
+
 
 }
 
