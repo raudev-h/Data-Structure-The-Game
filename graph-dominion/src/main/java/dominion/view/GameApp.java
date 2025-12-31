@@ -3,20 +3,23 @@ package dominion.view;
 import com.almasb.fxgl.app.GameController;
 import dominion.core.GameControler;
 import dominion.core.GameMap;
+import dominion.core.GameTimer;
 import dominion.model.buildings.TownHall;
 import dominion.model.players.Player;
 import dominion.model.resources.ResourceType;
 import dominion.model.territories.Territory;
 import javafx.animation.FadeTransition;
+import javafx.animation.KeyFrame;
 import javafx.animation.ScaleTransition;
+import javafx.animation.Timeline;
 import javafx.animation.TranslateTransition;
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.Node;
 import javafx.scene.Scene;
-import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.effect.DropShadow;
@@ -24,9 +27,6 @@ import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
-import javafx.scene.paint.LinearGradient;
-import javafx.scene.paint.CycleMethod;
-import javafx.scene.paint.Stop;
 import javafx.scene.shape.Rectangle;
 import javafx.stage.*;
 import javafx.util.Duration;
@@ -41,20 +41,20 @@ public class GameApp extends Application {
     private double windowHeight;
     private Popup townHallPopup;
     private boolean isBuildingMode = false;
-    private ImageView buildingGhost; // Imagen fantasma para mostrar en el mouse
-    private String currentBuildingType = ""; // Tipo de edificio actual
-    private List<ImageView> placedBuildings = new ArrayList<>(); // Lista de edificios colocados
+    private ImageView buildingGhost;
+    private String currentBuildingType = "";
+    private List<ImageView> placedBuildings = new ArrayList<>();
     private int width = 100;
     private int height = 100;
     private GameControler gameControler;
     private Player actualPlayer;
     private GameMap gameMap;
     private Territory territory1;
-
+    private Timer gameTimer;
 
     @Override
     public void start(Stage stage) {
-        //Configurar Conexion con Backend
+        // Configurar Conexion con Backend
         gameControler = new GameControler();
         actualPlayer = gameControler.createPlayer("Player1", dominion.core.Color.BLUE);
         gameMap = gameControler.createGameMap();
@@ -75,52 +75,292 @@ public class GameApp extends Application {
         // 4. Añadir TownHall INTERACTIVO
         addInteractiveTownHall();
 
-        // 5. Añadir timer
-        Timer timer = new Timer();
-        Pane timerPanel = timer.getTimerPanel();
-        positionInCorner(timerPanel, windowWidth - 100, windowHeight);
-        root.getChildren().add(timerPanel);
-
-        // Inicializar el ImageView fantasma (invisible inicialmente)
+        // 5. Inicializar el ImageView fantasma
         buildingGhost = new ImageView();
         buildingGhost.setVisible(false);
-        buildingGhost.setMouseTransparent(true); // No captura eventos del mouse
+        buildingGhost.setMouseTransparent(true);
         root.getChildren().add(buildingGhost);
 
         // 6. Configurar ventana
         Scene scene = new Scene(root, windowWidth, windowHeight);
-
-        // Configurar listeners para el modo construcción
         setupBuildingListeners(scene);
+
+        // 7. Añadir árboles
+        addOrganicForest();
+
+        // 8. Crear unidades
+        createUnitNextToTownHall("leñador", "minero.png", 50);
+        createUnitNextToTownHall("minero", "minero.png", 50);
+        createUnitNextToTownHall("leñador", "Leñador.png", 50);
+
+        // 9. AÑADIR PANEL SUPERIOR CON TIMER INTEGRADO
+        Pane topPanel = createTopPanel();
+        root.getChildren().add(topPanel);
 
         stage.setTitle("Dominion");
         stage.setScene(scene);
         centerStage(stage, windowWidth, windowHeight);
         stage.show();
 
-        createUnitNextToTownHall("leñador", "minero.png", 50);
-        createUnitNextToTownHall("minero", "minero.png", 50);
-        createUnitNextToTownHall("leñador", "Leñador.png", 50);
-
-
-
-
-
-
-        // 7. Iniciar timer
-        timer.startTimer();
+        // 10. POSICIONAR EL PANEL AUTOMÁTICAMENTE después de que todo esté renderizado
+        Platform.runLater(() -> {
+            positionTopPanel();
+            updateResourceDisplay();
+            // Iniciar el timer automáticamente
+            if (gameTimer != null) {
+                gameTimer.startTimer();
+            }
+        });
     }
 
+    // ==================== PANEL SUPERIOR CON TIMER INTEGRADO ====================
 
+    /**
+     * Crea un panel superior con recursos y timer integrado
+     */
+    private Pane createTopPanel() {
+        // Panel principal horizontal
+        HBox topPanel = new HBox(15);
+        topPanel.setPadding(new Insets(10, 20, 10, 20));
+        topPanel.setAlignment(Pos.CENTER);
 
+        // MISMO estilo que el TownHall
+        topPanel.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.50); " +
+                        "-fx-background-radius: 10; " +
+                        "-fx-border-color: #dcdde1; " +
+                        "-fx-border-width: 1; " +
+                        "-fx-border-radius: 10; " +
+                        "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 8, 0.5, 0, 2);"
+        );
+
+        // ========== MADERA ==========
+        HBox woodSection = createResourceSection("\uD83C\uDFE0", "Madera",
+                territory1 != null && territory1.getTownHall() != null ?
+                        String.valueOf(territory1.getTownHall().getStoredResources().getAmount(ResourceType.WOOD)) : "0");
+
+        // ========== ORO ==========
+        HBox goldSection = createResourceSection("💰", "Oro",
+                territory1 != null && territory1.getTownHall() != null ?
+                        String.valueOf(territory1.getTownHall().getStoredResources().getAmount(ResourceType.GOLD)) : "0");
+
+        // ========== TIMER INTEGRADO ==========
+        gameTimer = new Timer();
+        VBox timerPanel = gameTimer.getTimerPanel();
+
+        // APLICAR ESTILOS DEL TOWNHALL AL TIMER
+        applyTownHallStyleToTimer(timerPanel);
+
+        // Añadir elementos en orden: Madera - Oro - Timer
+        topPanel.getChildren().addAll(woodSection, goldSection, timerPanel);
+
+        // Forzar que el panel se ajuste a su contenido
+        topPanel.setMaxWidth(Region.USE_PREF_SIZE);
+        topPanel.setMinWidth(Region.USE_PREF_SIZE);
+
+        // Contenedor para posicionar
+        StackPane container = new StackPane(topPanel);
+
+        return container;
+    }
+
+    /**
+     * Aplica los estilos del TownHall al panel del timer
+     */
+    private void applyTownHallStyleToTimer(VBox timerPanel) {
+        // Cambiar el estilo oscuro por el estilo del TownHall
+        timerPanel.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.50); " +
+                        "-fx-background-radius: 10; " +
+                        "-fx-border-color: #dcdde1; " +
+                        "-fx-border-width: 1; " +
+                        "-fx-border-radius: 10; " +
+                        "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 8, 0.5, 0, 2); " +
+                        "-fx-padding: 10 15;"
+        );
+
+        // Buscar y modificar los elementos del timer
+        for (Node node : timerPanel.getChildren()) {
+            if (node instanceof Label) {
+                Label label = (Label) node;
+                if (label.getText().matches("\\d{2}:\\d{2}:\\d{2}")) { // Si es el timer (00:00:00)
+                    label.setStyle(
+                            "-fx-font-size: 20px; " +
+                                    "-fx-font-weight: bold; " +
+                                    "-fx-text-fill: #2c3e50;"
+                    );
+                }
+            } else if (node instanceof HBox) {
+                HBox buttonBox = (HBox) node;
+                // Modificar los botones del timer
+                for (Node buttonNode : buttonBox.getChildren()) {
+                    if (buttonNode instanceof Button) {
+                        Button button = (Button) buttonNode;
+                        applyTownHallStyleToButton(button);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Aplica el estilo del TownHall a un botón
+     */
+    private void applyTownHallStyleToButton(Button button) {
+        String originalText = button.getText();
+
+        // Estilo base del TownHall para botones
+        button.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.5); " +
+                        "-fx-background-radius: 6; " +
+                        "-fx-border-color: #dcdde1; " +
+                        "-fx-border-width: 1; " +
+                        "-fx-border-radius: 6; " +
+                        "-fx-cursor: hand; " +
+                        "-fx-text-fill: #2c3e50; " +
+                        "-fx-font-size: 12px; " +
+                        "-fx-font-weight: bold; " +
+                        "-fx-padding: 6 12;"
+        );
+
+        // Determinar color según el tipo de botón
+        if (originalText.contains("Iniciar") || originalText.contains("▶")) {
+            button.setStyle(button.getStyle() +
+                    "-fx-background-color: rgba(46, 204, 113, 0.7); " + // Verde
+                    "-fx-border-color: #27ae60;"
+            );
+        } else if (originalText.contains("Pausar") || originalText.contains("⏸")) {
+            button.setStyle(button.getStyle() +
+                    "-fx-background-color: rgba(231, 76, 60, 0.7); " + // Rojo
+                    "-fx-border-color: #c0392b;"
+            );
+        } else if (originalText.contains("🔄")) {
+            button.setStyle(button.getStyle() +
+                    "-fx-background-color: rgba(52, 152, 219, 0.7); " + // Azul
+                    "-fx-border-color: #2980b9;"
+            );
+        }
+
+        // Efecto hover
+        button.setOnMouseEntered(e -> {
+            String currentStyle = button.getStyle();
+            if (originalText.contains("Iniciar") || originalText.contains("▶")) {
+                button.setStyle(currentStyle +
+                        "-fx-effect: dropshadow(gaussian, rgba(46, 204, 113, 0.5), 5, 0.5, 0, 1);"
+                );
+            } else if (originalText.contains("Pausar") || originalText.contains("⏸")) {
+                button.setStyle(currentStyle +
+                        "-fx-effect: dropshadow(gaussian, rgba(231, 76, 60, 0.5), 5, 0.5, 0, 1);"
+                );
+            } else if (originalText.contains("🔄")) {
+                button.setStyle(currentStyle +
+                        "-fx-effect: dropshadow(gaussian, rgba(52, 152, 219, 0.5), 5, 0.5, 0, 1);"
+                );
+            }
+        });
+
+        button.setOnMouseExited(e -> {
+            String currentStyle = button.getStyle();
+            // Remover el efecto de sombra
+            button.setStyle(currentStyle.replace(
+                    "-fx-effect: dropshadow(gaussian, rgba(.*), 5, 0.5, 0, 1);",
+                    "-fx-effect: null;"
+            ));
+        });
+    }
+
+    /**
+     * Crea una sección de recurso compacta
+     */
+    private HBox createResourceSection(String icon, String resourceName, String amount) {
+        HBox section = new HBox(8);
+        section.setAlignment(Pos.CENTER);
+        section.setPadding(new Insets(0, 10, 0, 0));
+
+        // Icono
+        Label iconLabel = new Label(icon);
+        iconLabel.setStyle("-fx-font-size: 20px;");
+
+        // Contenedor vertical
+        VBox textContainer = new VBox(1);
+        textContainer.setAlignment(Pos.CENTER_LEFT);
+
+        // Nombre del recurso
+        Label nameLabel = new Label(resourceName);
+        nameLabel.setStyle("-fx-font-size: 10px; -fx-text-fill: #7f8c8d;");
+
+        // Cantidad
+        Label amountLabel = new Label(amount);
+        amountLabel.setId(resourceName.toLowerCase() + "_amount");
+        amountLabel.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;");
+
+        textContainer.getChildren().addAll(nameLabel, amountLabel);
+        section.getChildren().addAll(iconLabel, textContainer);
+
+        return section;
+    }
+
+    /**
+     * Actualiza los recursos en el panel superior
+     */
+    private void updateResourceDisplay() {
+        if (territory1 != null && territory1.getTownHall() != null) {
+            int wood = territory1.getTownHall().getStoredResources().getAmount(ResourceType.WOOD);
+            int gold = territory1.getTownHall().getStoredResources().getAmount(ResourceType.GOLD);
+
+            Label woodLabel = (Label) root.lookup("#madera_amount");
+            Label goldLabel = (Label) root.lookup("#oro_amount");
+
+            if (woodLabel != null) {
+                woodLabel.setText(String.valueOf(wood));
+            }
+            if (goldLabel != null) {
+                goldLabel.setText(String.valueOf(gold));
+            }
+        }
+    }
+
+    /**
+     * Método para posicionar el panel superior automáticamente
+     */
+    private void positionTopPanel() {
+        for (Node node : root.getChildren()) {
+            if (node instanceof StackPane) {
+                StackPane stackPane = (StackPane) node;
+                if (!stackPane.getChildren().isEmpty()) {
+                    Node child = stackPane.getChildren().get(0);
+                    if (child instanceof HBox) {
+                        HBox topPanel = (HBox) child;
+
+                        // Forzar cálculo de dimensiones
+                        topPanel.applyCss();
+                        topPanel.layout();
+
+                        double panelWidth = topPanel.getWidth();
+                        double panelHeight = topPanel.getHeight();
+
+                        // Posicionar en el centro superior
+                        node.setLayoutX((windowWidth - panelWidth) / 2);
+                        node.setLayoutY(15);
+
+                        // Asegurar que esté al frente
+                        node.toFront();
+
+                        System.out.println("📍 Panel superior posicionado: " + panelWidth + "x" + panelHeight);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // ==================== TOWNHALL Y CONSTRUCCIÓN ====================
 
     private void addInteractiveTownHall() {
         try {
-            // Cargar imagen del TownHall
             Image townHallImage = new Image("file:src/main/resources/images/TownHall1.png");
             ImageView townHallView = new ImageView(townHallImage);
 
-            // Configurar tamaño y posición
             double townHallSize = 170;
             townHallView.setFitWidth(townHallSize);
             townHallView.setFitHeight(townHallSize);
@@ -128,31 +368,25 @@ public class GameApp extends Application {
 
             double townHallX = windowWidth * 0.3 - townHallSize/2;
             double townHallY = windowHeight * 0.4 - townHallSize/2;
-            townHallView.setX(townHallX+100);
-            townHallView.setY(townHallY+100);
+            townHallView.setX(townHallX + 100);
+            townHallView.setY(townHallY + 100);
 
             placedBuildings.add(townHallView);
 
-            //agregar TownHall al territorio1
-            TownHall townHall1 = new TownHall("1", territory1,100, 5);
+            TownHall townHall1 = new TownHall("1", territory1, 100, 5);
             territory1.setTownHall(townHall1);
-            //Eliminar TODO
-            territory1.getTownHall().getStoredResources().addResource(ResourceType.WOOD, 160);
+            territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, 600);
 
-
-            // Efectos visuales
             DropShadow glow = new DropShadow();
-            glow.setColor(Color.rgb(255, 215, 0, 0.7)); // Dorado
+            glow.setColor(Color.rgb(255, 215, 0, 0.7));
             glow.setRadius(15);
             townHallView.setEffect(glow);
 
-            // **EVENTO DE CLIC - Abrir panel de opciones**
             townHallView.setOnMouseClicked(event -> {
                 System.out.println("🏰 TownHall clickeado - Abriendo menú...");
                 showTownHallMenu(townHallX + townHallSize/3, townHallY);
             });
 
-            // Cursor de mano para indicar interactividad
             townHallView.setOnMouseEntered(e -> {
                 townHallView.setCursor(javafx.scene.Cursor.HAND);
                 townHallView.setScaleX(1.1);
@@ -166,7 +400,7 @@ public class GameApp extends Application {
             });
 
             root.getChildren().addAll(townHallView);
-            System.out.println("✅ TownHall interactivo añadido en: (" + townHallX + ", " + townHallY + ")");
+            System.out.println("✅ TownHall interactivo añadido");
 
         } catch (Exception e) {
             System.err.println("❌ Error al cargar TownHall: " + e.getMessage());
@@ -187,19 +421,16 @@ public class GameApp extends Application {
         VBox mainPanel = createCenteredPanel();
         StackPane container = new StackPane(mainPanel);
 
-        // Posición: CENTRADO en la pantalla
-        double panelWidth = 100;  // Ancho mayor para incluir textos
-        double panelHeight = 200; // Alto mayor para botones con texto
+        double panelWidth = 100;
+        double panelHeight = 200;
         double panelX = (windowWidth - panelWidth) / 2;
         double panelY = (windowHeight - panelHeight) / 2;
 
         townHallPopup.getContent().add(container);
         townHallPopup.show(root.getScene().getWindow(), panelX, panelY);
 
-        // Animación de aparición desde el centro
         animateCenterEntrance(mainPanel);
     }
-
 
     private VBox createCenteredPanel() {
         VBox panel = new VBox(10);
@@ -207,41 +438,33 @@ public class GameApp extends Application {
         panel.setPadding(new Insets(20, 20, 20, 20));
         panel.setPrefSize(250, 320);
 
-        // Fondo blanco semitransparente (menos transparente)
         panel.setBackground(new Background(new BackgroundFill(
-                Color.rgb(255, 255, 255, 0.50),  // 50% de opacidad - MENOS TRANSPARENTE
+                Color.rgb(255, 255, 255, 0.50),
                 new CornerRadii(12),
                 Insets.EMPTY
         )));
 
-        // Borde sutil dorado
         panel.setBorder(new Border(new BorderStroke(
-                Color.rgb(212, 175, 55, 0.8),  // Dorado
+                Color.rgb(212, 175, 55, 0.8),
                 BorderStrokeStyle.SOLID,
                 new CornerRadii(12),
                 new BorderWidths(2)
         )));
 
-        // Sombra para efecto de elevación
         DropShadow shadow = new DropShadow();
         shadow.setColor(Color.rgb(0, 0, 0, 0.3));
         shadow.setRadius(15);
         shadow.setSpread(0.1);
         panel.setEffect(shadow);
 
-        // TÍTULO del panel
         Label title = new Label("TownHall");
-        title.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; " +
-                "-fx-text-fill: #2c3e50; -fx-font-family: 'Arial';");
+        title.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;");
         title.setPadding(new Insets(0, 0, 10, 0));
 
-        // Separador
         Region separator = new Region();
         separator.setPrefHeight(2);
-        separator.setStyle("-fx-background-color: #d4af37; " +
-                "-fx-background-radius: 1;");
+        separator.setStyle("-fx-background-color: #d4af37; -fx-background-radius: 1;");
 
-        // Botones con icono y texto
         VBox buttonContainer = new VBox(8);
         buttonContainer.setAlignment(Pos.CENTER);
         buttonContainer.setPadding(new Insets(10, 0, 0, 0));
@@ -251,7 +474,6 @@ public class GameApp extends Application {
         Button minerButton = createTextButton("⛏", "Crear Minero", "75 Oro, 25 Madera");
         Button lumberjackButton = createTextButton("", "Crear Leñador", "50 Oro, 50 Madera");
 
-        // Acciones de los botones
         houseButton.setOnAction(e -> {
             System.out.println("✅ Creando Casa...");
             townHallPopup.hide();
@@ -278,38 +500,271 @@ public class GameApp extends Application {
             createUnitNextToTownHall("leñador", "Leñador.png", 50);
         });
 
-        buttonContainer.getChildren().addAll(
-                houseButton, barracksButton, minerButton, lumberjackButton
-        );
-
-
+        buttonContainer.getChildren().addAll(houseButton, barracksButton, minerButton, lumberjackButton);
         panel.getChildren().addAll(title, separator, buttonContainer);
 
         return panel;
     }
 
-    /**
-     * Método genérico para crear cualquier unidad (minero, leñador, etc.)
-     */
+    // ==================== CONSTRUCCIÓN DE EDIFICIOS ====================
+
+    private void enterBuildingMode(String buildingType) {
+        this.isBuildingMode = true;
+        this.currentBuildingType = buildingType;
+        boolean construir = true;
+
+        if(currentBuildingType.equalsIgnoreCase("Casa"))
+            construir = territory1.getTownHall().canCreateHouse();
+        else if(currentBuildingType.equalsIgnoreCase("Cuartel"))
+            construir = territory1.getTownHall().canCreateMilitaryBase();
+
+        if(construir){
+            try {
+                String imagePath = "file:src/main/resources/images/" + buildingType + ".png";
+                Image buildingImage = new Image(imagePath);
+
+                buildingGhost.setImage(buildingImage);
+                if (buildingType.equalsIgnoreCase("Cuartel")) {
+                    width = 170;
+                    height = 170;
+                } else {
+                    width = 100;
+                    height = 100;
+                }
+
+                buildingGhost.setFitWidth(width);
+                buildingGhost.setFitHeight(height);
+                buildingGhost.setPreserveRatio(true);
+                buildingGhost.setOpacity(0.6);
+                buildingGhost.setVisible(true);
+
+                root.setCursor(javafx.scene.Cursor.CROSSHAIR);
+
+                System.out.println("✅ Modo construcción activado para: " + buildingType);
+
+                root.getScene().setOnKeyPressed(event -> {
+                    if (event.getCode() == javafx.scene.input.KeyCode.ESCAPE) {
+                        cancelBuildingMode();
+                    }
+                });
+
+            } catch (Exception ex) {
+                System.err.println("❌ Error al cargar imagen del edificio: " + ex.getMessage());
+            }
+        } else {
+            showMaterialWarning();
+            this.isBuildingMode = false;
+            this.currentBuildingType = null;
+            buildingGhost.setVisible(false);
+            root.setCursor(javafx.scene.Cursor.DEFAULT);
+        }
+    }
+
+    private void showMaterialWarning() {
+        Stage warningStage = new Stage();
+        warningStage.initModality(Modality.APPLICATION_MODAL);
+        warningStage.initStyle(StageStyle.TRANSPARENT);
+        warningStage.setTitle("Materiales insuficientes");
+
+        VBox warningPanel = new VBox(15);
+        warningPanel.setPadding(new Insets(25, 30, 25, 30));
+        warningPanel.setAlignment(Pos.CENTER);
+        warningPanel.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.50); " +
+                        "-fx-background-radius: 15; " +
+                        "-fx-border-color: #dcdde1; " +
+                        "-fx-border-width: 1; " +
+                        "-fx-border-radius: 15; " +
+                        "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0.5, 0, 2);"
+        );
+
+        Label warningIcon = new Label("⚠");
+        warningIcon.setStyle("-fx-font-size: 36px; -fx-padding: 0 0 5 0;");
+
+        VBox messageContainer = new VBox(5);
+        messageContainer.setAlignment(Pos.CENTER);
+
+        Label titleLabel = new Label("Materiales insuficientes");
+        titleLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;");
+
+        Label detailLabel = new Label("No tienes los recursos necesarios\npara construir este edificio");
+        detailLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #000000; -fx-text-alignment: center;");
+        detailLabel.setWrapText(true);
+
+        messageContainer.getChildren().addAll(titleLabel, detailLabel);
+
+        Button okButton = new Button("Entendido");
+        okButton.setPrefWidth(150);
+        okButton.setPrefHeight(38);
+        okButton.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.5); " +
+                        "-fx-background-radius: 6; " +
+                        "-fx-border-color: #dcdde1; " +
+                        "-fx-border-width: 1; " +
+                        "-fx-border-radius: 6; " +
+                        "-fx-cursor: hand; " +
+                        "-fx-text-fill: #2c3e50; " +
+                        "-fx-font-size: 12px; " +
+                        "-fx-font-weight: bold;"
+        );
+
+        okButton.setOnMouseEntered(e -> {
+            okButton.setStyle(
+                    "-fx-background-color: rgba(236, 240, 241, 0.5); " +
+                            "-fx-background-radius: 6; " +
+                            "-fx-border-color: #3498db; " +
+                            "-fx-border-width: 1.5; " +
+                            "-fx-border-radius: 6; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-text-fill: #2c3e50; " +
+                            "-fx-font-size: 12px; " +
+                            "-fx-font-weight: bold; " +
+                            "-fx-effect: dropshadow(gaussian, rgba(52, 152, 219, 0.3), 5, 0.5, 0, 1);"
+            );
+        });
+
+        okButton.setOnMouseExited(e -> {
+            okButton.setStyle(
+                    "-fx-background-color: rgba(255, 255, 255, 0.5); " +
+                            "-fx-background-radius: 6; " +
+                            "-fx-border-color: #dcdde1; " +
+                            "-fx-border-width: 1; " +
+                            "-fx-border-radius: 6; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-text-fill: #2c3e50; " +
+                            "-fx-font-size: 12px; " +
+                            "-fx-font-weight: bold; " +
+                            "-fx-effect: null;"
+            );
+        });
+
+        okButton.setOnAction(e -> {
+            warningStage.close();
+            cancelBuildingMode();
+        });
+
+        warningPanel.getChildren().addAll(warningIcon, messageContainer, okButton);
+
+        StackPane rootPane = new StackPane(warningPanel);
+        rootPane.setStyle("-fx-background-color: transparent;");
+        rootPane.setAlignment(Pos.CENTER);
+
+        Scene warningScene = new Scene(rootPane, 300, 250);
+        warningScene.setFill(Color.TRANSPARENT);
+
+        warningStage.initOwner(root.getScene().getWindow());
+        warningStage.setScene(warningScene);
+        warningStage.setResizable(false);
+        warningStage.showAndWait();
+    }
+
+    private void cancelBuildingMode() {
+        isBuildingMode = false;
+        currentBuildingType = "";
+        buildingGhost.setVisible(false);
+        root.setCursor(javafx.scene.Cursor.DEFAULT);
+        System.out.println("❌ Modo construcción cancelado");
+    }
+
+    private void placeBuilding(double x, double y) {
+        if (!isBuildingMode) return;
+
+        double buildingWidth = width;
+        double buildingHeight = height;
+        double posX = x - buildingWidth / 2;
+        double posY = y - buildingHeight / 2;
+
+        if (checkCollision(posX, posY, buildingWidth, buildingHeight)) {
+            System.out.println("❌ No se puede construir aquí - Colisión detectada");
+            showCollisionFeedback();
+            return;
+        }
+
+        if (posX < 0 || posY < 0 ||
+                posX + buildingWidth > windowWidth ||
+                posY + buildingHeight > windowHeight) {
+            System.out.println("❌ No se puede construir fuera del mapa");
+            showOutOfBoundsFeedback();
+            return;
+        }
+
+        boolean creado = false;
+
+        if(currentBuildingType.equalsIgnoreCase("Casa")){
+            creado = territory1.getTownHall().createHouse();
+        } else if(currentBuildingType.equalsIgnoreCase("Cuartel")){
+            creado = territory1.getTownHall().createMilitaryBase();
+        }
+
+        if (!creado) {
+            System.out.println("❌ Error: No se pudo crear el edificio en el backend");
+            cancelBuildingMode();
+            return;
+        }
+
+        // ACTUALIZAR RECURSOS DESPUÉS DE CONSTRUIR
+        updateResourceDisplay();
+
+        try {
+            String imagePath = "file:src/main/resources/images/" + currentBuildingType + ".png";
+            Image buildingImage = new Image(imagePath);
+
+            ImageView buildingView = new ImageView(buildingImage);
+            buildingView.setFitWidth(buildingWidth);
+            buildingView.setFitHeight(buildingHeight);
+            buildingView.setPreserveRatio(true);
+            buildingView.setX(posX);
+            buildingView.setY(posY);
+
+            DropShadow shadow = new DropShadow();
+            shadow.setColor(Color.rgb(0, 0, 0, 0.5));
+            shadow.setRadius(10);
+            shadow.setSpread(0.1);
+            buildingView.setEffect(shadow);
+
+            FadeTransition fade = new FadeTransition(Duration.millis(500), buildingView);
+            fade.setFromValue(0.0);
+            fade.setToValue(1.0);
+
+            ScaleTransition scale = new ScaleTransition(Duration.millis(500), buildingView);
+            scale.setFromX(0.5);
+            scale.setFromY(0.5);
+            scale.setToX(1.0);
+            scale.setToY(1.0);
+
+            javafx.animation.ParallelTransition parallel =
+                    new javafx.animation.ParallelTransition(fade, scale);
+            parallel.play();
+
+            root.getChildren().add(buildingView);
+            placedBuildings.add(buildingView);
+            makeBuildingInteractive(buildingView, currentBuildingType);
+
+            System.out.println("✅ " + currentBuildingType + " construido en: (" + (int)posX + ", " + (int)posY + ")");
+            cancelBuildingMode();
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al colocar edificio visualmente: " + e.getMessage());
+            cancelBuildingMode();
+        }
+    }
+
+    // ==================== UNIDADES ====================
+
     private void createUnitNextToTownHall(String unitType, String imageName, double unitSize) {
         try {
-            // 1. Obtener posición y tamaño del TownHall
             double townHallX = windowWidth * 0.3 - 85 + 100;
             double townHallY = windowHeight * 0.4 - 85 + 100;
             double townHallSize = 170;
+            double spacing = 5;
 
-            double spacing = 5; // Separación mínima
-
-            // 2. Buscar posición válida
             Position validPosition = findPositionForUnit(townHallX, townHallY, townHallSize, unitSize, spacing, unitType);
 
-            // 3. Si no hay posición, mostrar error
             if (validPosition == null) {
                 System.out.println("❌ No hay espacio disponible para el " + unitType);
                 return;
             }
 
-            // 4. Crear la unidad en la posición encontrada
             createUnitAtPosition(unitType, imageName, validPosition.x, validPosition.y, unitSize);
 
         } catch (Exception e) {
@@ -317,32 +772,537 @@ public class GameApp extends Application {
         }
     }
 
+    // ==================== ÁRBOLES ====================
+
     /**
-     * Busca posición para una unidad
+     * Añade árboles de forma orgánica pero bien distribuida
      */
+    private void addOrganicForest() {
+        try {
+            Image treeImage = new Image("file:src/main/resources/images/Arbol.png");
+            double treeSize = 65;
+
+            System.out.println("🌲 Creando bosques en esquinas...");
+            createForestCluster(treeImage, treeSize, 70, 70, 6);
+            createForestCluster(treeImage, treeSize, windowWidth - 170, 70, 6);
+            createForestCluster(treeImage, treeSize, 70, windowHeight - 170, 6);
+            createForestCluster(treeImage, treeSize, windowWidth - 170, windowHeight - 170, 6);
+
+            System.out.println("🌳 Creando línea de árboles superior...");
+            createWavyTreeLine(treeImage, treeSize, 30, 0, windowWidth - 40, 45, 20, 12);
+
+            System.out.println("🌳 Creando línea de árboles inferior...");
+            createWavyTreeLine(treeImage, treeSize, 40, windowHeight - 65, windowWidth - 40, windowHeight - 65, 15, 12);
+
+            System.out.println("🌿 Creando grupos laterales...");
+            createForestCluster(treeImage, treeSize, 60, windowHeight/2 - 50, 20);
+            createForestCluster(treeImage, treeSize, windowWidth - 60, windowHeight/2 - 50, 4);
+
+            System.out.println("✅ Bosque orgánico creado con éxito!");
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al crear bosque: " + e.getMessage());
+            createOrganicPlaceholderForest();
+        }
+    }
+
+    /**
+     * Crea un grupo denso de árboles
+     */
+    private void createForestCluster(Image treeImage, double baseSize, double centerX, double centerY, int treeCount) {
+        for (int i = 0; i < treeCount; i++) {
+            double angle = Math.random() * 2 * Math.PI;
+            double radius = 30 + Math.random() * 25;
+
+            double x = centerX + Math.cos(angle) * radius;
+            double y = centerY + Math.sin(angle) * radius;
+            double size = baseSize * (0.85 + Math.random() * 0.3);
+
+            double townHallX = windowWidth * 0.3 + 100;
+            double townHallY = windowHeight * 0.4 + 100;
+            double distanceToTownHall = Math.sqrt(Math.pow(x - townHallX, 2) + Math.pow(y - townHallY, 2));
+
+            if (distanceToTownHall < 160) {
+                angle = Math.atan2(y - townHallY, x - townHallX);
+                x = townHallX + Math.cos(angle) * 170;
+                y = townHallY + Math.sin(angle) * 170;
+            }
+
+            x = Math.max(25, Math.min(x, windowWidth - size - 25));
+            y = Math.max(25, Math.min(y, windowHeight - size - 25));
+
+            createTree(treeImage, size, x, y, "Bosque_" + (int)centerX + "_" + (int)centerY + "_" + i);
+        }
+    }
+
+    /**
+     * Crea una línea de árboles ondulada con buen espaciado
+     */
+    private void createWavyTreeLine(Image treeImage, double baseSize,
+                                    double startX, double startY,
+                                    double endX, double endY,
+                                    int treeCount, double waveHeight) {
+        double step = (endX - startX) / (treeCount - 1);
+
+        for (int i = 0; i < treeCount; i++) {
+            double x = startX + i * step;
+            double wave = Math.sin(i * 0.6) * waveHeight;
+            double y = startY + wave;
+            double sizeVariation = 0.8 + Math.random() * 0.4;
+            double size = baseSize * sizeVariation;
+
+            x += (Math.random() - 0.5) * 15;
+
+            double townHallX = windowWidth * 0.3 + 100;
+            double townHallY = windowHeight * 0.4 + 100;
+            double distance = Math.sqrt(Math.pow(x - townHallX, 2) + Math.pow(y - townHallY, 2));
+
+            if (distance > 150) {
+                createTree(treeImage, size, x, y, "Linea_" + i);
+            }
+        }
+    }
+
+    /**
+     * Crea un árbol individual
+     */
+    private void createTree(Image treeImage, double size, double x, double y, String treeId) {
+        ImageView treeView = new ImageView(treeImage);
+
+        treeView.setFitWidth(size);
+        treeView.setFitHeight(size);
+        treeView.setPreserveRatio(true);
+        treeView.setX(x);
+        treeView.setY(y);
+        treeView.setId("Arbol_" + treeId);
+
+        treeView.setRotate((Math.random() - 0.5) * 8);
+
+        DropShadow treeShadow = new DropShadow();
+        treeShadow.setColor(Color.rgb(0, 0, 0, 0.4));
+        treeShadow.setRadius(4);
+        treeShadow.setOffsetY(2);
+        treeView.setEffect(treeShadow);
+
+        makeTreeInteractive(treeView, "Árbol " + treeId.replace("_", " "));
+        root.getChildren().add(treeView);
+    }
+
+    /**
+     * Hace un árbol interactivo
+     */
+    private void makeTreeInteractive(ImageView treeView, String treeName) {
+        treeView.setOnMouseClicked(event -> {
+            System.out.println("🌳 " + treeName + " clickeado");
+
+            FadeTransition flash = new FadeTransition(Duration.millis(150), treeView);
+            flash.setFromValue(1.0);
+            flash.setToValue(0.7);
+            flash.setAutoReverse(true);
+            flash.setCycleCount(2);
+            flash.play();
+        });
+
+        treeView.setOnMouseEntered(e -> {
+            treeView.setCursor(javafx.scene.Cursor.HAND);
+            treeView.setScaleX(1.05);
+            treeView.setScaleY(1.05);
+
+            DropShadow highlight = new DropShadow();
+            highlight.setColor(Color.rgb(255, 220, 100, 0.6));
+            highlight.setRadius(8);
+            treeView.setEffect(highlight);
+        });
+
+        treeView.setOnMouseExited(e -> {
+            treeView.setCursor(javafx.scene.Cursor.DEFAULT);
+            treeView.setScaleX(1.0);
+            treeView.setScaleY(1.0);
+
+            DropShadow normalShadow = new DropShadow();
+            normalShadow.setColor(Color.rgb(0, 0, 0, 0.4));
+            normalShadow.setRadius(4);
+            normalShadow.setOffsetY(2);
+            treeView.setEffect(normalShadow);
+        });
+    }
+
+    /**
+     * Versión placeholder si no carga la imagen
+     */
+    private void createOrganicPlaceholderForest() {
+        System.out.println("🌿 Creando bosque placeholder...");
+        double baseSize = 55;
+
+        createSimpleTreeCluster(70, 70, 6);
+        createSimpleTreeCluster(windowWidth - 170, 70, 6);
+        createSimpleTreeCluster(70, windowHeight - 170, 6);
+        createSimpleTreeCluster(windowWidth - 170, windowHeight - 170, 6);
+
+        for (int i = 0; i < 10; i++) {
+            double x = 45 + i * 75;
+            double wave = Math.sin(i * 0.6) * 10;
+            createSimpleTree(x, 45 + wave, baseSize);
+        }
+
+        for (int i = 0; i < 10; i++) {
+            double x = 45 + i * 75;
+            double wave = Math.sin(i * 0.5 + 2) * 10;
+            createSimpleTree(x, windowHeight - 75 + wave, baseSize);
+        }
+
+        createSimpleTreeCluster(60, windowHeight/2 - 50, 4);
+        createSimpleTreeCluster(windowWidth - 60, windowHeight/2 - 50, 4);
+
+        System.out.println("✅ Bosque placeholder creado");
+    }
+
+    /**
+     * Crea un grupo de árboles placeholder
+     */
+    private void createSimpleTreeCluster(double centerX, double centerY, int count) {
+        for (int i = 0; i < count; i++) {
+            double angle = Math.random() * 2 * Math.PI;
+            double radius = 20 + Math.random() * 20;
+            double x = centerX + Math.cos(angle) * radius;
+            double y = centerY + Math.sin(angle) * radius;
+            createSimpleTree(x, y, 45 + Math.random() * 25);
+        }
+    }
+
+    /**
+     * Crea un árbol placeholder simple
+     */
+    private void createSimpleTree(double x, double y, double size) {
+        javafx.scene.shape.Circle canopy = new javafx.scene.shape.Circle(size/2);
+        canopy.setCenterX(x + size/2);
+        canopy.setCenterY(y + size/2);
+
+        int greenValue = 80 + (int)(Math.random() * 40);
+        canopy.setFill(Color.rgb(0, greenValue, 0));
+        canopy.setStroke(Color.rgb(0, greenValue - 15, 0));
+        canopy.setStrokeWidth(1.5);
+
+        javafx.scene.shape.Rectangle trunk = new javafx.scene.shape.Rectangle(
+                x + size/2 - size/7, y + size - size/3, size/3.5, size/2.5
+        );
+        trunk.setFill(Color.rgb(101, 67, 33));
+
+        Pane tree = new Pane(canopy, trunk);
+
+        tree.setOnMouseClicked(e -> System.out.println("🌲 Árbol clickeado"));
+        tree.setOnMouseEntered(e -> {
+            tree.setCursor(javafx.scene.Cursor.HAND);
+            tree.setScaleX(1.05);
+            tree.setScaleY(1.05);
+        });
+        tree.setOnMouseExited(e -> {
+            tree.setScaleX(1.0);
+            tree.setScaleY(1.0);
+        });
+
+        root.getChildren().add(tree);
+    }
+
+    // ==================== MÉTODOS AUXILIARES ====================
+
+    private Button createTextButton(String icon, String text, String cost) {
+        HBox buttonContent = new HBox(10);
+        buttonContent.setAlignment(Pos.CENTER_LEFT);
+        buttonContent.setPadding(new Insets(5, 15, 5, 15));
+
+        Label iconLabel = new Label(icon);
+        iconLabel.setStyle("-fx-font-size: 24px; -fx-padding: 0 10 0 0;");
+
+        VBox textContainer = new VBox(2);
+        textContainer.setAlignment(Pos.CENTER_LEFT);
+
+        Label textLabel = new Label(text);
+        textLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;");
+
+        Label costLabel = new Label(cost);
+        costLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #7f8c8d;");
+
+        textContainer.getChildren().addAll(textLabel, costLabel);
+        buttonContent.getChildren().addAll(iconLabel, textContainer);
+
+        Button button = new Button();
+        button.setGraphic(buttonContent);
+        button.setPrefWidth(260);
+        button.setPrefHeight(55);
+        button.setAlignment(Pos.CENTER_LEFT);
+
+        button.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.5); " +
+                        "-fx-background-radius: 8; " +
+                        "-fx-border-color: #dcdde1; " +
+                        "-fx-border-width: 1; " +
+                        "-fx-border-radius: 8; " +
+                        "-fx-cursor: hand; " +
+                        "-fx-text-fill: #2c3e50;"
+        );
+
+        button.setOnMouseEntered(e -> {
+            button.setStyle(
+                    "-fx-background-color: rgba(236, 240, 241, 0.5); " +
+                            "-fx-background-radius: 8; " +
+                            "-fx-border-color: #3498db; " +
+                            "-fx-border-width: 1.5; " +
+                            "-fx-border-radius: 8; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-effect: dropshadow(gaussian, rgba(52, 152, 219, 0.3), 5, 0.5, 0, 1);"
+            );
+        });
+
+        button.setOnMouseExited(e -> {
+            button.setStyle(
+                    "-fx-background-color: rgba(255, 255, 255, 0.5); " +
+                            "-fx-background-radius: 8; " +
+                            "-fx-border-color: #dcdde1; " +
+                            "-fx-border-width: 1; " +
+                            "-fx-border-radius: 8; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-effect: null;"
+            );
+        });
+
+        return button;
+    }
+
+    private void animateCenterEntrance(VBox panel) {
+        panel.setScaleX(0.9);
+        panel.setScaleY(0.9);
+        panel.setOpacity(0);
+
+        ScaleTransition scale = new ScaleTransition(Duration.millis(400), panel);
+        scale.setToX(1.0);
+        scale.setToY(1.0);
+        scale.setInterpolator(javafx.animation.Interpolator.EASE_OUT);
+
+        FadeTransition fade = new FadeTransition(Duration.millis(400), panel);
+        fade.setToValue(1.0);
+        fade.setInterpolator(javafx.animation.Interpolator.EASE_OUT);
+
+        javafx.animation.ParallelTransition parallel = new javafx.animation.ParallelTransition(scale, fade);
+        parallel.play();
+    }
+
+    private void showConstructionAnimation(String buildingType) {
+        System.out.println("🔨 Iniciando construcción de: " + buildingType);
+        System.out.println("⏳ Tiempo estimado: 10 segundos");
+    }
+
+    private void addPlaceholderTownHall() {
+        Rectangle placeholder = new Rectangle(100, 100, Color.rgb(139, 69, 19, 0.8));
+        placeholder.setX(windowWidth * 0.3 - 50);
+        placeholder.setY(windowHeight * 0.4 - 50);
+        placeholder.setStroke(Color.GOLD);
+        placeholder.setStrokeWidth(2);
+
+        placeholder.setOnMouseClicked(e -> showTownHallMenu(windowWidth * 0.3, windowHeight * 0.4));
+        root.getChildren().add(placeholder);
+    }
+
+    private void setupBuildingListeners(Scene scene) {
+        scene.setOnMouseMoved(event -> {
+            if (isBuildingMode && buildingGhost.isVisible()) {
+                double x = event.getX() - buildingGhost.getFitWidth() / 2;
+                double y = event.getY() - buildingGhost.getFitHeight() / 2;
+
+                buildingGhost.setX(x);
+                buildingGhost.setY(y);
+
+                if (checkCollision(x, y, buildingGhost.getFitWidth(), buildingGhost.getFitHeight())) {
+                    javafx.scene.effect.ColorAdjust redTint = new javafx.scene.effect.ColorAdjust();
+                    redTint.setHue(1.0);
+                    buildingGhost.setEffect(redTint);
+                } else if (x < 0 || y < 0 ||
+                        x + buildingGhost.getFitWidth() > windowWidth ||
+                        y + buildingGhost.getFitHeight() > windowHeight) {
+                    javafx.scene.effect.ColorAdjust blueTint = new javafx.scene.effect.ColorAdjust();
+                    blueTint.setHue(-0.7);
+                    buildingGhost.setEffect(blueTint);
+                } else {
+                    buildingGhost.setEffect(null);
+                }
+            }
+        });
+
+        scene.setOnMouseClicked(event -> {
+            if (isBuildingMode) {
+                placeBuilding(event.getX(), event.getY());
+            }
+        });
+
+        scene.setOnMousePressed(event -> {
+            if (event.isSecondaryButtonDown() && isBuildingMode) {
+                cancelBuildingMode();
+            }
+        });
+    }
+
+    private void setMapBackground(Pane pane, double width, double height) {
+        try {
+            BackgroundImage background = new BackgroundImage(
+                    new Image("file:src/main/resources/images/map_background (4).png"),
+                    BackgroundRepeat.NO_REPEAT,
+                    BackgroundRepeat.NO_REPEAT,
+                    BackgroundPosition.CENTER,
+                    new BackgroundSize(
+                            BackgroundSize.AUTO, BackgroundSize.AUTO,
+                            false, false,
+                            true, true
+                    )
+            );
+            pane.setBackground(new Background(background));
+        } catch (Exception e) {
+            pane.setStyle("-fx-background-color: linear-gradient(to bottom, #1a472a, #2a5c2a);");
+        }
+    }
+
+    private boolean checkCollision(double x, double y, double width, double height) {
+        Rectangle newBuildingBounds = new Rectangle(x, y, width, height);
+
+        for (ImageView building : placedBuildings) {
+            Rectangle existingBounds = new Rectangle(
+                    building.getX(),
+                    building.getY(),
+                    building.getFitWidth(),
+                    building.getFitHeight()
+            );
+
+            if (newBuildingBounds.intersects(existingBounds.getBoundsInLocal())) {
+                return true;
+            }
+        }
+
+        for (Node node : root.getChildren()) {
+            if (node instanceof ImageView && node != buildingGhost) {
+                ImageView existingBuilding = (ImageView) node;
+                if (!existingBuilding.equals(buildingGhost)) {
+                    Rectangle existingBounds = new Rectangle(
+                            existingBuilding.getX(),
+                            existingBuilding.getY(),
+                            existingBuilding.getFitWidth(),
+                            existingBuilding.getFitHeight()
+                    );
+
+                    if (newBuildingBounds.intersects(existingBounds.getBoundsInLocal())) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private void showCollisionFeedback() {
+        if (!isBuildingMode) return;
+
+        buildingGhost.setEffect(new javafx.scene.effect.ColorAdjust());
+        javafx.scene.effect.ColorAdjust redTint = new javafx.scene.effect.ColorAdjust();
+        redTint.setHue(1.0);
+        buildingGhost.setEffect(redTint);
+
+        TranslateTransition shakeX = new TranslateTransition(Duration.millis(50), buildingGhost);
+        shakeX.setFromX(-10);
+        shakeX.setToX(10);
+        shakeX.setCycleCount(6);
+        shakeX.setAutoReverse(true);
+
+        TranslateTransition shakeY = new TranslateTransition(Duration.millis(50), buildingGhost);
+        shakeY.setFromY(-5);
+        shakeY.setToY(5);
+        shakeY.setCycleCount(6);
+        shakeY.setAutoReverse(true);
+
+        javafx.animation.ParallelTransition shake = new javafx.animation.ParallelTransition(shakeX, shakeY);
+
+        shake.setOnFinished(e -> {
+            buildingGhost.setEffect(null);
+            buildingGhost.setTranslateX(0);
+            buildingGhost.setTranslateY(0);
+        });
+
+        shake.play();
+    }
+
+    private void showOutOfBoundsFeedback() {
+        if (!isBuildingMode) return;
+
+        javafx.scene.effect.ColorAdjust blueTint = new javafx.scene.effect.ColorAdjust();
+        blueTint.setHue(-0.7);
+        buildingGhost.setEffect(blueTint);
+
+        FadeTransition pulse = new FadeTransition(Duration.millis(300), buildingGhost);
+        pulse.setFromValue(0.4);
+        pulse.setToValue(0.8);
+        pulse.setCycleCount(4);
+        pulse.setAutoReverse(true);
+
+        pulse.setOnFinished(e -> {
+            buildingGhost.setEffect(null);
+            buildingGhost.setOpacity(0.6);
+        });
+
+        pulse.play();
+    }
+
+    private void makeBuildingInteractive(ImageView buildingView, String buildingType) {
+        buildingView.setOnMouseClicked(e -> {
+            System.out.println("🏠 " + buildingType + " clickeado");
+        });
+
+        buildingView.setOnMouseEntered(e -> {
+            buildingView.setCursor(javafx.scene.Cursor.HAND);
+            buildingView.setScaleX(1.05);
+            buildingView.setScaleY(1.05);
+        });
+
+        buildingView.setOnMouseExited(e -> {
+            buildingView.setCursor(javafx.scene.Cursor.DEFAULT);
+            buildingView.setScaleX(1.0);
+            buildingView.setScaleY(1.0);
+        });
+    }
+
+    private void centerStage(Stage stage, double width, double height) {
+        Rectangle2D screen = Screen.getPrimary().getVisualBounds();
+        stage.setX((screen.getWidth() - width) / 2);
+        stage.setY((screen.getHeight() - height) / 2);
+    }
+
+    // ==================== CLASES AUXILIARES ====================
+
+    private class Position {
+        double x;
+        double y;
+
+        Position(double x, double y) {
+            this.x = x;
+            this.y = y;
+        }
+    }
+
     private Position findPositionForUnit(double townHallX, double townHallY, double townHallSize,
                                          double unitSize, double spacing, String unitType) {
-
         System.out.println("🔍 Buscando posición para " + unitType + "...");
 
-        // Crear lista de todas las posiciones a probar
         List<Position> positionsToTry = new ArrayList<>();
 
-        // Radio cercano al TownHall (primera prioridad)
         generatePositionsAroundPoint(positionsToTry,
                 townHallX + townHallSize/2,
                 townHallY + townHallSize/2,
                 townHallSize/2 + unitSize + spacing,
                 16, unitSize);
 
-        // Radio medio (segunda prioridad)
         generatePositionsAroundPoint(positionsToTry,
                 townHallX + townHallSize/2,
                 townHallY + townHallSize/2,
                 townHallSize + unitSize * 3,
                 24, unitSize);
 
-        // Buscar posición válida
         for (Position pos : positionsToTry) {
             if (!checkCollisionForUnit(pos.x, pos.y, unitSize, unitSize, unitType) &&
                     pos.x >= 0 && pos.y >= 0 &&
@@ -355,14 +1315,10 @@ public class GameApp extends Application {
             }
         }
 
-        // Si no hay espacio cercano, buscar cerca de otras unidades del mismo tipo
         System.out.println("⚠️ No hay espacio cerca del TownHall, buscando junto a otros " + unitType + "s...");
         return findPositionNextToOtherUnits(unitType, unitSize, spacing);
     }
 
-    /**
-     * Genera posiciones alrededor de un punto
-     */
     private void generatePositionsAroundPoint(List<Position> positions,
                                               double centerX, double centerY,
                                               double radius, int numPoints, double unitSize) {
@@ -374,24 +1330,17 @@ public class GameApp extends Application {
         }
     }
 
-    /**
-     * Verifica colisiones para una unidad (permite que se agrupen unidades del mismo tipo)
-     */
-
     private boolean checkCollisionForUnit(double x, double y, double width, double height, String unitType) {
         Rectangle newBounds = new Rectangle(x, y, width, height);
 
-        // 1. Verificar límites del mapa
         if (x < 0 || y < 0 || x + width > windowWidth || y + height > windowHeight) {
-            return true; // Fuera de los límites
+            return true;
         }
 
-        // 2. Verificar TODAS las unidades existentes (sin importar el tipo)
         for (Node node : root.getChildren()) {
             if (node instanceof ImageView && node != buildingGhost) {
                 ImageView existing = (ImageView) node;
 
-                // Verificar si es una unidad (tamaño 50x50)
                 if (existing.getFitWidth() == 50 && existing.getFitHeight() == 50) {
                     Rectangle existingBounds = new Rectangle(
                             existing.getX(),
@@ -400,8 +1349,6 @@ public class GameApp extends Application {
                             existing.getFitHeight()
                     );
 
-                    // IMPORTANTE: Verificar colisión con CUALQUIER unidad existente
-                    // No solo con unidades del mismo tipo
                     if (newBounds.intersects(existingBounds.getBoundsInLocal())) {
                         System.out.println("⚠️ Colisión detectada con otra unidad en: (" +
                                 (int)existing.getX() + ", " + (int)existing.getY() + ")");
@@ -411,12 +1358,10 @@ public class GameApp extends Application {
             }
         }
 
-        // 3. Verificar colisión con edificios (100x100 o más grandes)
         for (Node node : root.getChildren()) {
             if (node instanceof ImageView && node != buildingGhost) {
                 ImageView existing = (ImageView) node;
 
-                // Verificar si es un edificio (tamaño 100x100 o más)
                 if (existing.getFitWidth() >= 100 || existing.getFitHeight() >= 100) {
                     Rectangle existingBounds = new Rectangle(
                             existing.getX(),
@@ -425,7 +1370,6 @@ public class GameApp extends Application {
                             existing.getFitHeight()
                     );
 
-                    // Añadir margen de seguridad alrededor de edificios
                     Rectangle paddedBounds = new Rectangle(
                             existingBounds.getX() - 10,
                             existingBounds.getY() - 10,
@@ -442,18 +1386,14 @@ public class GameApp extends Application {
             }
         }
 
-        return false; // Espacio libre
+        return false;
     }
-    /**
-     * Crea una unidad en una posición específica
-     */
+
     private void createUnitAtPosition(String unitType, String imageName, double x, double y, double size) {
         try {
-            // Cargar imagen de la unidad
             String imagePath = "file:src/main/resources/images/" + imageName;
             Image unitImage = new Image(imagePath);
 
-            // Crear ImageView de la unidad
             ImageView unitView = new ImageView(unitImage);
             unitView.setFitWidth(size);
             unitView.setFitHeight(size);
@@ -461,22 +1401,19 @@ public class GameApp extends Application {
             unitView.setX(x);
             unitView.setY(y);
 
-            // Añadir etiqueta para identificarla
             unitView.setId(unitType + "_" + System.currentTimeMillis());
 
-            // Añadir efectos visuales específicos según el tipo
             DropShadow shadow = new DropShadow();
             if (unitType.equals("minero")) {
-                shadow.setColor(Color.rgb(184, 134, 11, 0.6)); // Dorado para mineros
+                shadow.setColor(Color.rgb(184, 134, 11, 0.6));
             } else if (unitType.equals("leñador")) {
-                shadow.setColor(Color.rgb(34, 139, 34, 0.6)); // Verde para leñadores
+                shadow.setColor(Color.rgb(34, 139, 34, 0.6));
             } else {
                 shadow.setColor(Color.rgb(0, 0, 0, 0.4));
             }
             shadow.setRadius(8);
             unitView.setEffect(shadow);
 
-            // Animación de aparición
             FadeTransition fade = new FadeTransition(Duration.millis(300), unitView);
             fade.setFromValue(0.0);
             fade.setToValue(1.0);
@@ -487,19 +1424,13 @@ public class GameApp extends Application {
             scale.setToX(1.0);
             scale.setToY(1.0);
 
-            // Añadir al root
             root.getChildren().add(unitView);
 
-
-            // Reproducir animaciones
             javafx.animation.ParallelTransition parallel =
                     new javafx.animation.ParallelTransition(fade, scale);
             parallel.play();
 
             System.out.println("✅ " + unitType + " creado en: (" + (int)x + ", " + (int)y + ")");
-
-            // Mostrar mensaje de éxito con emoji específico
-            String emoji = unitType.equals("minero") ? "⛏️" : "🪓";
 
         } catch (Exception e) {
             System.err.println("❌ Error al crear " + unitType + ": " + e.getMessage());
@@ -507,31 +1438,25 @@ public class GameApp extends Application {
         }
     }
 
-    /**
-     * Capitaliza la primera letra de un string
-     */
-    private String capitalize(String str) {
-        if (str == null || str.isEmpty()) return str;
-        return str.substring(0, 1).toUpperCase() + str.substring(1);
-    }
+    private List<ImageView> getExistingUnits(String unitType) {
+        List<ImageView> units = new ArrayList<>();
 
-    /**
-     * Determina si un ImageView es de un tipo específico de unidad
-     */
-    private boolean isUnitType(ImageView imageView, String unitType) {
-        // Podemos identificar por tamaño (50x50) o por etiqueta
-        if (imageView.getFitWidth() == 50 && imageView.getFitHeight() == 50) {
-            // Verificar por nombre de archivo o propiedad
-            if (imageView.getId() != null && imageView.getId().startsWith(unitType)) {
-                return true;
+        for (Node node : root.getChildren()) {
+            if (node instanceof ImageView && node != buildingGhost) {
+                ImageView imageView = (ImageView) node;
+                if (imageView.getFitWidth() == 50 && imageView.getFitHeight() == 50) {
+                    if (imageView.getId() != null && imageView.getId().startsWith(unitType)) {
+                        units.add(imageView);
+                    } else if (unitType.equals("unidad")) {
+                        units.add(imageView);
+                    }
+                }
             }
         }
-        return false;
+
+        return units;
     }
 
-    /**
-     * Busca posición junto a otras unidades del mismo tipo (MEJORADO)
-     */
     private Position findPositionNextToOtherUnits(String unitType, double unitSize, double spacing) {
         List<ImageView> existingUnits = getExistingUnits(unitType);
 
@@ -542,24 +1467,21 @@ public class GameApp extends Application {
 
         System.out.println("🔍 Buscando junto a " + existingUnits.size() + " " + unitType + "s existentes...");
 
-        // Probar alrededor de cada unidad existente
         for (ImageView unit : existingUnits) {
             double unitX = unit.getX();
             double unitY = unit.getY();
 
-            // Generar 8 posiciones alrededor (como puntos de una rosa de los vientos)
             Position[] positionsAround = {
-                    new Position(unitX + unitSize + spacing, unitY), // Este
-                    new Position(unitX - unitSize - spacing, unitY), // Oeste
-                    new Position(unitX, unitY - unitSize - spacing), // Norte
-                    new Position(unitX, unitY + unitSize + spacing), // Sur
-                    new Position(unitX + unitSize + spacing, unitY - unitSize - spacing), // Noreste
-                    new Position(unitX - unitSize - spacing, unitY - unitSize - spacing), // Noroeste
-                    new Position(unitX + unitSize + spacing, unitY + unitSize + spacing), // Sureste
-                    new Position(unitX - unitSize - spacing, unitY + unitSize - spacing)  // Suroeste
+                    new Position(unitX + unitSize + spacing, unitY),
+                    new Position(unitX - unitSize - spacing, unitY),
+                    new Position(unitX, unitY - unitSize - spacing),
+                    new Position(unitX, unitY + unitSize + spacing),
+                    new Position(unitX + unitSize + spacing, unitY - unitSize - spacing),
+                    new Position(unitX - unitSize - spacing, unitY - unitSize - spacing),
+                    new Position(unitX + unitSize + spacing, unitY + unitSize + spacing),
+                    new Position(unitX - unitSize - spacing, unitY + unitSize - spacing)
             };
 
-            // Verificar cada posición
             for (Position pos : positionsAround) {
                 if (!checkCollisionForUnit(pos.x, pos.y, unitSize, unitSize, unitType) &&
                         pos.x >= 0 && pos.y >= 0 &&
@@ -573,37 +1495,28 @@ public class GameApp extends Application {
             }
         }
 
-        // Si no hay espacio junto a unidades existentes, buscar cualquier espacio libre
         System.out.println("⚠️ No hay espacio junto a " + unitType + "s existentes, buscando en todo el mapa...");
         return findAnyFreeSpace(unitSize, spacing);
     }
 
-    /**
-     * Busca cualquier espacio libre en el mapa (último recurso)
-     */
     private Position findAnyFreeSpace(double unitSize, double spacing) {
         System.out.println("🔍 Buscando espacio libre en todo el mapa...");
 
-        // Crear una cuadrícula para buscar espacios
         int gridCols = (int) (windowWidth / (unitSize + spacing));
         int gridRows = (int) (windowHeight / (unitSize + spacing));
 
-        // Primero, buscar cerca del TownHall (radio más grande)
-        double townHallCenterX = windowWidth * 0.3 + 15; // Centro del TownHall
+        double townHallCenterX = windowWidth * 0.3 + 15;
         double townHallCenterY = windowHeight * 0.4 + 15;
-        double searchRadius = 300; // Radio amplio de búsqueda
+        double searchRadius = 300;
 
-        // Buscar en anillos concéntricos alrededor del TownHall
         for (int radius = 1; radius <= 10; radius++) {
             double currentRadius = searchRadius * (radius / 10.0);
 
-            // Buscar en puntos alrededor del círculo
             for (int i = 0; i < 16; i++) {
                 double angle = 2 * Math.PI * i / 16;
                 double x = townHallCenterX + Math.cos(angle) * currentRadius - unitSize/2;
                 double y = townHallCenterY + Math.sin(angle) * currentRadius - unitSize/2;
 
-                // Asegurar que esté dentro de los límites
                 x = Math.max(0, Math.min(x, windowWidth - unitSize));
                 y = Math.max(0, Math.min(y, windowHeight - unitSize));
 
@@ -619,15 +1532,12 @@ public class GameApp extends Application {
             }
         }
 
-        // Si no se encuentra cerca del TownHall, buscar en cuadrícula por todo el mapa
         System.out.println("🌍 Buscando en cuadrícula por todo el mapa...");
 
-        // Dividir el mapa en celdas y buscar
         double cellSize = unitSize + spacing * 2;
         int cols = (int) (windowWidth / cellSize);
         int rows = (int) (windowHeight / cellSize);
 
-        // Buscar de forma aleatoria pero sistemática
         java.util.Random random = new java.util.Random();
 
         for (int attempt = 0; attempt < cols * rows * 2; attempt++) {
@@ -637,7 +1547,6 @@ public class GameApp extends Application {
             double x = col * cellSize + spacing;
             double y = row * cellSize + spacing;
 
-            // Asegurar que no salga de los límites
             if (x + unitSize > windowWidth) continue;
             if (y + unitSize > windowHeight) continue;
 
@@ -647,7 +1556,6 @@ public class GameApp extends Application {
             }
         }
 
-        // Último intento: búsqueda exhaustiva celda por celda
         System.out.println("⏳ Búsqueda exhaustiva...");
 
         for (int row = 0; row < rows; row++) {
@@ -666,673 +1574,8 @@ public class GameApp extends Application {
             }
         }
 
-        // Si llegamos aquí, el mapa está completamente lleno
         System.out.println("❌ El mapa está completamente lleno");
         return null;
-    }
-
-    /**
-     * Obtiene todas las unidades existentes de un tipo específico
-     */
-    private List<ImageView> getExistingUnits(String unitType) {
-        List<ImageView> units = new ArrayList<>();
-
-        for (Node node : root.getChildren()) {
-            if (node instanceof ImageView && node != buildingGhost) {
-                ImageView imageView = (ImageView) node;
-                // Asumiendo que las unidades tienen tamaño 50px
-                if (imageView.getFitWidth() == 50
-                        && imageView.getFitHeight() == 50) {
-                    // Filtrar por tipo si es necesario
-                    if (imageView.getId() != null && imageView.getId().startsWith(unitType)) {
-                        units.add(imageView);
-                    } else if (unitType.equals("unidad")) { // Caso genérico
-                        units.add(imageView);
-                    }
-                }
-            }
-        }
-
-        return units;
-    }
-
-    /**
-     * Clase auxiliar para representar posiciones
-     */
-    private class Position {
-        double x;
-        double y;
-
-        Position(double x, double y) {
-            this.x = x;
-            this.y = y;
-        }
-    }
-
-
-
-
-
-    private void enterBuildingMode(String buildingType) {
-        this.isBuildingMode = true;
-        this.currentBuildingType = buildingType;
-        boolean construir = true;
-
-        if(currentBuildingType.equalsIgnoreCase("Casa"))
-            construir = territory1.getTownHall().canCreateHouse();
-        else if(currentBuildingType.equalsIgnoreCase("Cuartel"))
-            construir = territory1.getTownHall().canCreateMilitaryBase();
-
-        if(construir){
-
-
-                try {
-                    // Cargar la imagen correspondiente
-                    String imagePath = "file:src/main/resources/images/" +
-                            buildingType + ".png";
-                    Image buildingImage = new Image(imagePath);
-
-                    // Configurar el fantasma (imagen semi-transparente)
-                    buildingGhost.setImage(buildingImage);
-                    if (buildingType.equalsIgnoreCase("Cuartel")) {
-                        width = 170;
-                        height = 170;
-                    } else {
-                        width = 100;
-                        height = 100;
-
-                    }
-
-                    buildingGhost.setFitWidth(width); // Tamaño ajustable
-                    buildingGhost.setFitHeight(height);
-                    buildingGhost.setPreserveRatio(true);
-                    buildingGhost.setOpacity(0.6); // 60% de opacidad para ver dónde se coloca
-                    buildingGhost.setVisible(true);
-
-                    // Cambiar cursor para indicar modo construcción
-                    root.setCursor(javafx.scene.Cursor.CROSSHAIR);
-
-                    System.out.println("✅ Modo construcción activado para: " + buildingType);
-                    System.out.println("💡 Haz clic en cualquier lugar del mapa para colocar el edificio");
-                    System.out.println("⎋ Presiona ESC para cancelar");
-
-                    // Agregar listener para cancelar con ESC
-                    root.getScene().setOnKeyPressed(event -> {
-                        if (event.getCode() == javafx.scene.input.KeyCode.ESCAPE) {
-                            cancelBuildingMode();
-                        }
-                    });
-
-                } catch (Exception ex) {
-                    System.err.println("❌ Error al cargar imagen del edificio: " + ex.getMessage());
-
-                }
-            }
-        else{
-                // Crear Stage para el warning
-                Stage warningStage = new Stage();
-                warningStage.initModality(Modality.APPLICATION_MODAL);
-                warningStage.initStyle(StageStyle.TRANSPARENT); // Sin bordes de ventana
-                warningStage.setTitle("Materiales insuficientes");
-
-                // Panel principal con el MISMO estilo transparente
-                VBox warningPanel = new VBox(15);
-                warningPanel.setPadding(new Insets(25, 30, 25, 30));
-                warningPanel.setAlignment(Pos.CENTER);
-                warningPanel.setStyle(
-                        "-fx-background-color: rgba(255, 255, 255, 0.50); " + // MISMA opacidad 50%
-                                "-fx-background-radius: 15; " +
-                                "-fx-border-color: #dcdde1; " +
-                                "-fx-border-width: 1; " +
-                                "-fx-border-radius: 15; " +
-                                "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0.5, 0, 2);"
-                );
-
-                // Icono de advertencia (usa tu fuente de iconos)
-                Label warningIcon = new Label("⚠");
-                warningIcon.setStyle("-fx-font-size: 36px; -fx-padding: 0 0 5 0;");
-
-                // Mensaje con el MISMO estilo
-                VBox messageContainer = new VBox(5);
-                messageContainer.setAlignment(Pos.CENTER);
-
-                Label titleLabel = new Label("Materiales insuficientes");
-                titleLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;");
-
-                Label detailLabel = new Label("No tienes los recursos necesarios\npara construir este edificio");
-                detailLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #000000; -fx-text-alignment: center;");
-                detailLabel.setWrapText(true);
-
-                messageContainer.getChildren().addAll(titleLabel, detailLabel);
-
-                // Botón "Entendido" con el MISMO estilo
-                Button okButton = new Button("Entendido");
-                okButton.setPrefWidth(150);
-                okButton.setPrefHeight(38);
-                okButton.setStyle(
-                        "-fx-background-color: rgba(255, 255, 255, 0.5); " + // 50% de opacidad
-                                "-fx-background-radius: 6; " +
-                                "-fx-border-color: #dcdde1; " +
-                                "-fx-border-width: 1; " +
-                                "-fx-border-radius: 6; " +
-                                "-fx-cursor: hand; " +
-                                "-fx-text-fill: #2c3e50; " +
-                                "-fx-font-size: 12px; " +
-                                "-fx-font-weight: bold;"
-                );
-
-                // Efecto hover IDÉNTICO
-                okButton.setOnMouseEntered(e -> {
-                    okButton.setStyle(
-                            "-fx-background-color: rgba(236, 240, 241, 0.5); " + // 50% de opacidad
-                                    "-fx-background-radius: 6; " +
-                                    "-fx-border-color: #3498db; " +
-                                    "-fx-border-width: 1.5; " +
-                                    "-fx-border-radius: 6; " +
-                                    "-fx-cursor: hand; " +
-                                    "-fx-text-fill: #2c3e50; " +
-                                    "-fx-font-size: 12px; " +
-                                    "-fx-font-weight: bold; " +
-                                    "-fx-effect: dropshadow(gaussian, rgba(52, 152, 219, 0.3), 5, 0.5, 0, 1);"
-                    );
-                });
-
-                okButton.setOnMouseExited(e -> {
-                    okButton.setStyle(
-                            "-fx-background-color: rgba(255, 255, 255, 0.5); " + // 50% de opacidad
-                                    "-fx-background-radius: 6; " +
-                                    "-fx-border-color: #dcdde1; " +
-                                    "-fx-border-width: 1; " +
-                                    "-fx-border-radius: 6; " +
-                                    "-fx-cursor: hand; " +
-                                    "-fx-text-fill: #2c3e50; " +
-                                    "-fx-font-size: 12px; " +
-                                    "-fx-font-weight: bold; " +
-                                    "-fx-effect: null;"
-                    );
-                });
-
-                okButton.setOnAction(e -> {
-                    warningStage.close();
-                    cancelBuildingMode();
-                });
-
-                // Añadir al panel
-                warningPanel.getChildren().addAll(warningIcon, messageContainer, okButton);
-
-                // Crear StackPane para centrar y agregar fondo transparente
-                StackPane rootPane = new StackPane(warningPanel);
-                rootPane.setStyle("-fx-background-color: transparent;");
-                rootPane.setAlignment(Pos.CENTER);
-
-                // Escena
-                Scene warningScene = new Scene(rootPane, 300, 250);
-                warningScene.setFill(Color.TRANSPARENT);
-
-                // Posicionar en el centro de la ventana principal
-                warningStage.initOwner(root.getScene().getWindow());
-                warningStage.setScene(warningScene);
-                warningStage.setResizable(false);
-
-                // Mostrar y esperar
-                warningStage.showAndWait();
-
-            this.isBuildingMode = false;
-            this.currentBuildingType = null;
-            buildingGhost.setVisible(false);
-            root.setCursor(javafx.scene.Cursor.DEFAULT);
-            }
-    }
-
-    private void cancelBuildingMode() {
-        isBuildingMode = false;
-        currentBuildingType = "";
-        buildingGhost.setVisible(false);
-        root.setCursor(javafx.scene.Cursor.DEFAULT);
-        System.out.println("❌ Modo construcción cancelado");
-    }
-
-    /**
-     * Coloca el edificio en la posición especificada
-     */
-    private void placeBuilding(double x, double y) {
-        if (!isBuildingMode) return;
-
-        // Calcular posición centrada
-        double buildingWidth = width;
-        double buildingHeight = height;
-        double posX = x - buildingWidth / 2;
-        double posY = y - buildingHeight / 2;
-
-        // Verificar colisiones PRIMERO
-        if (checkCollision(posX, posY, buildingWidth, buildingHeight)) {
-            System.out.println("❌ No se puede construir aquí - Colisión detectada");
-            showCollisionFeedback();
-            return;
-        }
-
-        // Verificar límites del mapa
-        if (posX < 0 || posY < 0 ||
-                posX + buildingWidth > windowWidth ||
-                posY + buildingHeight > windowHeight) {
-            System.out.println("❌ No se puede construir fuera del mapa");
-            showOutOfBoundsFeedback();
-            return;
-        }
-
-        // INTENTAR CREAR EL EDIFICIO EN EL BACKEND PRIMERO
-        boolean creado = false;
-
-        if(currentBuildingType.equalsIgnoreCase("Casa")){
-            creado = territory1.getTownHall().createHouse(); // Esto gastará recursos
-        }
-        else if(currentBuildingType.equalsIgnoreCase("Cuartel")){
-            creado = territory1.getTownHall().createMilitaryBase(); // Esto gastará recursos
-        }
-
-        // Si NO se pudo crear (debería ser raro ya que verificamos con canCreate)
-        if (!creado) {
-            System.out.println("❌ Error: No se pudo crear el edificio en el backend");
-            cancelBuildingMode();
-            return;
-        }
-
-        // Si SÍ se creó exitosamente, ahora mostrar visualmente
-        try {
-            String imagePath = "file:src/main/resources/images/" +
-                    currentBuildingType + ".png";
-            Image buildingImage = new Image(imagePath);
-
-            ImageView buildingView = new ImageView(buildingImage);
-            buildingView.setFitWidth(buildingWidth);
-            buildingView.setFitHeight(buildingHeight);
-            buildingView.setPreserveRatio(true);
-            buildingView.setX(posX);
-            buildingView.setY(posY);
-
-            // Efectos visuales
-            DropShadow shadow = new DropShadow();
-            shadow.setColor(Color.rgb(0, 0, 0, 0.5));
-            shadow.setRadius(10);
-            shadow.setSpread(0.1);
-            buildingView.setEffect(shadow);
-
-            // Animación
-            FadeTransition fade = new FadeTransition(Duration.millis(500), buildingView);
-            fade.setFromValue(0.0);
-            fade.setToValue(1.0);
-
-            ScaleTransition scale = new ScaleTransition(Duration.millis(500), buildingView);
-            scale.setFromX(0.5);
-            scale.setFromY(0.5);
-            scale.setToX(1.0);
-            scale.setToY(1.0);
-
-            javafx.animation.ParallelTransition parallel =
-                    new javafx.animation.ParallelTransition(fade, scale);
-            parallel.play();
-
-            // Añadir a la escena
-            root.getChildren().add(buildingView);
-            placedBuildings.add(buildingView);
-            makeBuildingInteractive(buildingView, currentBuildingType);
-
-            System.out.println("✅ " + currentBuildingType + " construido en: (" +
-                    (int)posX + ", " + (int)posY + ")");
-
-            cancelBuildingMode();
-
-        } catch (Exception e) {
-            System.err.println("❌ Error al colocar edificio visualmente: " + e.getMessage());
-
-            cancelBuildingMode();
-        }
-    }
-
-    private void showCollisionFeedback() {
-        if (!isBuildingMode) return;
-
-        // 1. Cambiar a color rojo con opacidad
-        buildingGhost.setEffect(new javafx.scene.effect.ColorAdjust());
-        javafx.scene.effect.ColorAdjust redTint = new javafx.scene.effect.ColorAdjust();
-        redTint.setHue(1.0); // Cambia a tono rojizo
-        buildingGhost.setEffect(redTint);
-
-        // 2. Animación de sacudida
-        TranslateTransition shakeX = new TranslateTransition(Duration.millis(50), buildingGhost);
-        shakeX.setFromX(-10);
-        shakeX.setToX(10);
-        shakeX.setCycleCount(6);
-        shakeX.setAutoReverse(true);
-
-        TranslateTransition shakeY = new TranslateTransition(Duration.millis(50), buildingGhost);
-        shakeY.setFromY(-5);
-        shakeY.setToY(5);
-        shakeY.setCycleCount(6);
-        shakeY.setAutoReverse(true);
-
-        // Combinar animaciones X e Y
-        javafx.animation.ParallelTransition shake =
-                new javafx.animation.ParallelTransition(shakeX, shakeY);
-
-        shake.setOnFinished(e -> {
-            // Restaurar color normal después de la animación
-            buildingGhost.setEffect(null);
-            buildingGhost.setTranslateX(0);
-            buildingGhost.setTranslateY(0);
-        });
-
-        shake.play();
-
-    }
-
-    private void showOutOfBoundsFeedback() {
-        if (!isBuildingMode) return;
-
-        // Efecto similar pero con diferente mensaje
-        javafx.scene.effect.ColorAdjust blueTint = new javafx.scene.effect.ColorAdjust();
-        blueTint.setHue(-0.7); // Cambia a tono azulado
-        buildingGhost.setEffect(blueTint);
-
-        // Animación de pulso
-        FadeTransition pulse = new FadeTransition(Duration.millis(300), buildingGhost);
-        pulse.setFromValue(0.4);
-        pulse.setToValue(0.8);
-        pulse.setCycleCount(4);
-        pulse.setAutoReverse(true);
-
-        pulse.setOnFinished(e -> {
-            buildingGhost.setEffect(null);
-            buildingGhost.setOpacity(0.6); // Volver a la opacidad original
-        });
-
-        pulse.play();
-
-    }
-
-    /**
-     * Hace el edificio interactivo (clickeable, etc.)
-     */
-    private void makeBuildingInteractive(ImageView buildingView, String buildingType) {
-        buildingView.setOnMouseClicked(e -> {
-            System.out.println("🏠 " + buildingType + " clickeado");
-            // Aquí podrías añadir más funcionalidades
-            // como mostrar información, menú de acciones, etc.
-        });
-
-        buildingView.setOnMouseEntered(e -> {
-            buildingView.setCursor(javafx.scene.Cursor.HAND);
-            buildingView.setScaleX(1.05);
-            buildingView.setScaleY(1.05);
-        });
-
-        buildingView.setOnMouseExited(e -> {
-            buildingView.setCursor(javafx.scene.Cursor.DEFAULT);
-            buildingView.setScaleX(1.0);
-            buildingView.setScaleY(1.0);
-        });
-    }
-
-
-    private Button createTextButton(String icon, String text, String cost) {
-        HBox buttonContent = new HBox(10);
-        buttonContent.setAlignment(Pos.CENTER_LEFT);
-        buttonContent.setPadding(new Insets(5, 15, 5, 15));
-
-        // Icono
-        Label iconLabel = new Label(icon);
-        iconLabel.setStyle("-fx-font-size: 24px; -fx-padding: 0 10 0 0;");
-
-        // Contenedor para texto y costo (alineados verticalmente)
-        VBox textContainer = new VBox(2);
-        textContainer.setAlignment(Pos.CENTER_LEFT);
-
-        // Texto principal
-        Label textLabel = new Label(text);
-        textLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;");
-
-        // Costo (más pequeño)
-        Label costLabel = new Label(cost);
-        costLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #7f8c8d;");
-
-        textContainer.getChildren().addAll(textLabel, costLabel);
-        buttonContent.getChildren().addAll(iconLabel, textContainer);
-
-        Button button = new Button();
-        button.setGraphic(buttonContent);
-        button.setPrefWidth(260);  // Ancho fijo para todos los botones
-        button.setPrefHeight(55);
-        button.setAlignment(Pos.CENTER_LEFT);
-
-        // Misma opacidad del panel (50%)
-        Color buttonBaseColor = Color.rgb(255, 255, 255, 0.50); // 50% de opacidad
-        Color buttonHoverColor = Color.rgb(236, 240, 241, 0.50); // 50% de opacidad
-
-        // Estilo del botón con 50% de opacidad
-        button.setStyle(
-                "-fx-background-color: rgba(255, 255, 255, 0.5); " + // Equivalente a 50% opacidad
-                        "-fx-background-radius: 8; " +
-                        "-fx-border-color: #dcdde1; " +
-                        "-fx-border-width: 1; " +
-                        "-fx-border-radius: 8; " +
-                        "-fx-cursor: hand; " +
-                        "-fx-text-fill: #2c3e50;"
-        );
-
-        // Efecto hover con 50% de opacidad
-        button.setOnMouseEntered(e -> {
-            button.setStyle(
-                    "-fx-background-color: rgba(236, 240, 241, 0.5); " + // 50% de opacidad
-                            "-fx-background-radius: 8; " +
-                            "-fx-border-color: #3498db; " +
-                            "-fx-border-width: 1.5; " +
-                            "-fx-border-radius: 8; " +
-                            "-fx-cursor: hand; " +
-                            "-fx-effect: dropshadow(gaussian, rgba(52, 152, 219, 0.3), 5, 0.5, 0, 1);"
-            );
-        });
-
-        button.setOnMouseExited(e -> {
-            button.setStyle(
-                    "-fx-background-color: rgba(255, 255, 255, 0.5); " + // 50% de opacidad
-                            "-fx-background-radius: 8; " +
-                            "-fx-border-color: #dcdde1; " +
-                            "-fx-border-width: 1; " +
-                            "-fx-border-radius: 8; " +
-                            "-fx-cursor: hand; " +
-                            "-fx-effect: null;"
-            );
-        });
-
-        return button;
-    }
-
-    private void animateCenterEntrance(VBox panel) {
-        // Inicialmente invisible y ligeramente escalado
-        panel.setScaleX(0.9);
-        panel.setScaleY(0.9);
-        panel.setOpacity(0);
-
-        // Animación combinada
-        ScaleTransition scale = new ScaleTransition(Duration.millis(400), panel);
-        scale.setToX(1.0);
-        scale.setToY(1.0);
-        scale.setInterpolator(javafx.animation.Interpolator.EASE_OUT);
-
-        FadeTransition fade = new FadeTransition(Duration.millis(400), panel);
-        fade.setToValue(1.0);
-        fade.setInterpolator(javafx.animation.Interpolator.EASE_OUT);
-
-        // Animaciones en paralelo
-        javafx.animation.ParallelTransition parallel = new javafx.animation.ParallelTransition(
-                scale, fade
-        );
-
-        parallel.play();
-    }
-
-
-    private Node createSeparator() {
-        Rectangle separator = new Rectangle(250, 1);
-        separator.setFill(Color.rgb(52, 152, 219, 0.5));
-        return separator;
-    }
-
-    private void animatePanelEntrance(VBox panel) {
-        // Animación de escala (crece desde el centro)
-        ScaleTransition scale = new ScaleTransition(Duration.millis(300), panel);
-        scale.setFromX(0.8);
-        scale.setFromY(0.8);
-        scale.setToX(1.0);
-        scale.setToY(1.0);
-
-        // Animación de fade (aparece gradualmente)
-        FadeTransition fade = new FadeTransition(Duration.millis(300), panel);
-        fade.setFromValue(0.0);
-        fade.setToValue(1.0);
-
-        // Ejecutar animaciones en paralelo
-        scale.play();
-        fade.play();
-    }
-
-    private void showConstructionAnimation(String buildingType) {
-        System.out.println("🔨 Iniciando construcción de: " + buildingType);
-        System.out.println("⏳ Tiempo estimado: 10 segundos");
-
-        // Aquí podrías añadir efectos visuales en el futuro
-        // Por ahora solo mensaje en consola
-    }
-
-    private void addPlaceholderTownHall() {
-        // Código para marcador de posición si el TownHall no se carga
-        Rectangle placeholder = new Rectangle(100, 100, Color.rgb(139, 69, 19, 0.8));
-        placeholder.setX(windowWidth * 0.3 - 50);
-        placeholder.setY(windowHeight * 0.4 - 50);
-        placeholder.setStroke(Color.GOLD);
-        placeholder.setStrokeWidth(2);
-
-        placeholder.setOnMouseClicked(e -> showTownHallMenu(windowWidth * 0.3, windowHeight * 0.4));
-
-        root.getChildren().add(placeholder);
-    }
-
-
-    private void setupBuildingListeners(Scene scene) {
-        // Mover la imagen fantasma con el mouse
-        scene.setOnMouseMoved(event -> {
-            if (isBuildingMode && buildingGhost.isVisible()) {
-                // Centrar la imagen en el cursor
-                double x = event.getX() - buildingGhost.getFitWidth() / 2;
-                double y = event.getY() - buildingGhost.getFitHeight() / 2;
-
-                buildingGhost.setX(x);
-                buildingGhost.setY(y);
-
-                // Verificar colisión en tiempo real y cambiar color
-                if (checkCollision(x, y, buildingGhost.getFitWidth(), buildingGhost.getFitHeight())) {
-                    // Rojo si hay colisión
-                    javafx.scene.effect.ColorAdjust redTint = new javafx.scene.effect.ColorAdjust();
-                    redTint.setHue(1.0);
-                    buildingGhost.setEffect(redTint);
-                } else if (x < 0 || y < 0 ||
-                        x + buildingGhost.getFitWidth() > windowWidth ||
-                        y + buildingGhost.getFitHeight() > windowHeight) {
-                    // Azul si está fuera de límites
-                    javafx.scene.effect.ColorAdjust blueTint = new javafx.scene.effect.ColorAdjust();
-                    blueTint.setHue(-0.7);
-                    buildingGhost.setEffect(blueTint);
-                } else {
-                    // Normal si es válido
-                    buildingGhost.setEffect(null);
-                }
-            }
-        });
-
-        // Colocar el edificio al hacer click
-        scene.setOnMouseClicked(event -> {
-            if (isBuildingMode) {
-                placeBuilding(event.getX(), event.getY());
-            }
-        });
-
-        // Cancelar con click derecho
-        scene.setOnMousePressed(event -> {
-            if (event.isSecondaryButtonDown() && isBuildingMode) {
-                cancelBuildingMode();
-            }
-        });
-    }
-
-    private void setMapBackground(Pane pane, double width, double height) {
-        try {
-            BackgroundImage background = new BackgroundImage(
-                    new Image("file:src/main/resources/images/map_background.png"),
-                    BackgroundRepeat.NO_REPEAT,
-                    BackgroundRepeat.NO_REPEAT,
-                    BackgroundPosition.CENTER,
-                    new BackgroundSize(
-                            BackgroundSize.AUTO, BackgroundSize.AUTO,
-                            false, false,
-                            true, true
-                    )
-            );
-            pane.setBackground(new Background(background));
-        } catch (Exception e) {
-            pane.setStyle("-fx-background-color: linear-gradient(to bottom, #1a472a, #2a5c2a);");
-        }
-    }
-
-    // Método para verificar colisiones
-    private boolean checkCollision(double x, double y, double width, double height) {
-        Rectangle newBuildingBounds = new Rectangle(x, y, width, height);
-
-        for (ImageView building : placedBuildings) {
-            Rectangle existingBounds = new Rectangle(
-                    building.getX(),
-                    building.getY(),
-                    building.getFitWidth(),
-                    building.getFitHeight()
-            );
-
-            // Verificar si los rectángulos se intersecan
-            if (newBuildingBounds.intersects(existingBounds.getBoundsInLocal())) {
-                return true; // Hay colisión
-            }
-        }
-
-        // También verificar colisión con el TownHall
-        for (Node node : root.getChildren()) {
-            if (node instanceof ImageView && node != buildingGhost) {
-                ImageView existingBuilding = (ImageView) node;
-                // Verificar si es un edificio (no el fantasma)
-                if (!existingBuilding.equals(buildingGhost)) {
-                    Rectangle existingBounds = new Rectangle(
-                            existingBuilding.getX(),
-                            existingBuilding.getY(),
-                            existingBuilding.getFitWidth(),
-                            existingBuilding.getFitHeight()
-                    );
-
-                    if (newBuildingBounds.intersects(existingBounds.getBoundsInLocal())) {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        return false; // No hay colisiones
-    }
-
-    private void positionInCorner(Pane element, double screenWidth, double screenHeight) {
-        element.setLayoutX(screenWidth - element.getPrefWidth() - 20);
-        element.setLayoutY(20);
-    }
-
-    private void centerStage(Stage stage, double width, double height) {
-        Rectangle2D screen = Screen.getPrimary().getVisualBounds();
-        stage.setX((screen.getWidth() - width) / 2);
-        stage.setY((screen.getHeight() - height) / 2);
     }
 
     public static void main(String[] args) {
