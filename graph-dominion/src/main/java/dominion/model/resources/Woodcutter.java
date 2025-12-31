@@ -1,3 +1,4 @@
+package dominion.model.resources;
 public class Woodcutter extends Worker {
 
     public Woodcutter(int damagePerSecond) {

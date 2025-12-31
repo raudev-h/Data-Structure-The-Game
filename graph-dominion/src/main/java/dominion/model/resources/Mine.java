@@ -1,3 +1,4 @@
+package dominion.model.resources;
 public class Mine extends NaturalResource {
 
     public Mine(int maxHp, int goldTotal) {

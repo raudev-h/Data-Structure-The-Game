@@ -1,3 +1,4 @@
+package dominion.model.resources;
 public class Tree extends NaturalResource {
 
     public Tree(int maxHp, int woodTotal) {

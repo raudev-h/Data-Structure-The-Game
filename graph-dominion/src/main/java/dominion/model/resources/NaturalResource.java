@@ -1,3 +1,4 @@
+ package dominion.model.resources;
 public abstract class NaturalResource {
     protected final int maxHp;
     protected int currentHp;

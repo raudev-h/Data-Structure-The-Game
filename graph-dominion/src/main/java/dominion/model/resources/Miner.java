@@ -1,3 +1,4 @@
+package dominion.model.resources;
 public class Miner extends Worker {
 
     public Miner(int damagePerSecond) {

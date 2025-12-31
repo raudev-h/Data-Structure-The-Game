@@ -1,3 +1,9 @@
+package dominion.model.resources;
+import dominion.model.resources.ResourceType;
+import dominion.model.resources.WorkerState;
+import dominion.model.resources.NaturalResource;
+
+
 public abstract class Worker {
 
     protected int damagePerSecond;
