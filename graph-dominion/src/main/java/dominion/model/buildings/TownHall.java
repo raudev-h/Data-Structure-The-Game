@@ -2,6 +2,7 @@ package dominion.model.buildings;
 
 import dominion.model.resources.ResourceCollection;
 import dominion.model.resources.ResourceType;
+import dominion.model.resources.Worker;
 import dominion.model.territories.Territory;
 import dominion.model.units.Miner;
 import dominion.model.units.ResourceCollector;
@@ -23,7 +24,8 @@ public class TownHall {
     private int level;
     private List<ResourceCollector> resourceCollectors;
     private final Deque<ConstructionOrder> constructionQueue;
-
+    HashMap<ResourceType, Integer> resources;
+    private List<Worker> workers ;
 
     public TownHall(String id, Territory territory, int currentHealth,
                     int workerCreationTime) {
@@ -37,6 +39,7 @@ public class TownHall {
         this.currentPopulation = 0; // después podemos ajustar esto
         this.ownedBuildings = new ArrayList<>();
         this.constructionQueue = new ArrayDeque<>();
+        this.workers = new ArrayList<>();
     }
     // GETTERS AND SETTERS
 
@@ -194,4 +197,28 @@ public class TownHall {
         }
         this.ownedBuildings.add(newBuilding);
     }
+
+    public boolean hasEnoughGold(int amount) {
+        return resources.get(ResourceType.GOLD) >= amount;
+    }
+
+    public void spendGold(int amount) {
+        if (!hasEnoughGold(amount)) {
+            throw new IllegalStateException("no hay oro suficiente");
+        }
+        resources.put(
+                ResourceType.GOLD,
+                resources.get(ResourceType.GOLD) - amount
+        );
+    }
+    public void addWorker(Worker worker) {
+        if(workers.size() < maxPopulationCapacity) {
+            workers.add(worker);
+        }else throw new IllegalStateException("no hay capacidad suficiente ");
+    }
+
+    public int getWorkerCount() {
+        return workers.size();
+    }
+
 }
