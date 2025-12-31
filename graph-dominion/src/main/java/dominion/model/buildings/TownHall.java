@@ -207,7 +207,9 @@ public class TownHall {
         );
     }
     public void addWorker(Worker worker) {
-        workers.add(worker);
+        if(workers.size() < maxPopulationCapacity) {
+            workers.add(worker);
+        }else throw new IllegalStateException("no hay capacidad suficiente ");
     }
 
     public int getWorkerCount() {
