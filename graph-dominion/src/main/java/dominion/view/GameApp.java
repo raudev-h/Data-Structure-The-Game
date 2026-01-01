@@ -51,6 +51,8 @@ public class GameApp extends Application {
     private GameMap gameMap;
     private Territory territory1;
     private Timer gameTimer;
+    private StackPane pauseOverlay;
+    private boolean isGamePaused = false;
 
     @Override
     public void start(Stage stage) {
@@ -72,37 +74,55 @@ public class GameApp extends Application {
         // 3. Añadir mapa como Background
         setMapBackground(root, windowWidth, windowHeight);
 
-        // 4. Añadir TownHall INTERACTIVO
+        // 4. Configurar el sistema de pausa (ANTES de otros elementos)
+        setupPauseSystem();
+
+        // 5. Añadir TownHall INTERACTIVO
         addInteractiveTownHall();
 
-        // 5. Inicializar el ImageView fantasma
+        // 6. Inicializar el ImageView fantasma
         buildingGhost = new ImageView();
         buildingGhost.setVisible(false);
         buildingGhost.setMouseTransparent(true);
         root.getChildren().add(buildingGhost);
 
-        // 6. Configurar ventana
+        // 7. Configurar ventana
         Scene scene = new Scene(root, windowWidth, windowHeight);
         setupBuildingListeners(scene);
 
-        // 7. Añadir árboles
+        // 8. Añadir árboles
         addOrganicForest();
 
-        // 8. Crear unidades
+        // 9. Crear unidades
         createUnitNextToTownHall("leñador", "minero.png", 50);
         createUnitNextToTownHall("minero", "minero.png", 50);
         createUnitNextToTownHall("leñador", "Leñador.png", 50);
 
-        // 9. AÑADIR PANEL SUPERIOR CON TIMER INTEGRADO
+        // 10. AÑADIR PANEL SUPERIOR CON TIMER INTEGRADO
         Pane topPanel = createTopPanel();
         root.getChildren().add(topPanel);
 
+        // 11. Configurar el stage
         stage.setTitle("Dominion");
         stage.setScene(scene);
         centerStage(stage, windowWidth, windowHeight);
         stage.show();
 
-        // 10. POSICIONAR EL PANEL AUTOMÁTICAMENTE después de que todo esté renderizado
+        // 12. Configurar el listener del timer para manejar pausa
+        if (gameTimer != null) {
+            gameTimer.setPauseListener(new Timer.PauseListener() {
+                @Override
+                public void onPause() {
+                    showPauseMenu();
+                }
+
+                @Override
+                public void onResume() {
+                }
+            });
+        }
+
+        // 13. POSICIONAR EL PANEL AUTOMÁTICAMENTE después de que todo esté renderizado
         Platform.runLater(() -> {
             positionTopPanel();
             updateResourceDisplay();
@@ -111,6 +131,322 @@ public class GameApp extends Application {
                 gameTimer.startTimer();
             }
         });
+    }
+    // ==================== SISTEMA DE PAUSA ====================
+
+    /**
+     * Configura el sistema de pausa (solo inicializa variables)
+     */
+    private void setupPauseSystem() {
+        // Solo inicializa las variables, el overlay se crea dinámicamente
+        isGamePaused = false;
+        // No crear el overlay aquí, se creará dinámicamente cuando se necesite
+    }
+
+    /**
+     * Crea el menú de pausa compacto con estilo TownHall (50% opacidad)
+     */
+    private VBox createPauseMenu() {
+        VBox panel = new VBox(15);
+        panel.setAlignment(Pos.CENTER);
+        panel.setPadding(new Insets(25, 30, 25, 30));
+        panel.setMaxWidth(Region.USE_PREF_SIZE);
+        panel.setMaxHeight(Region.USE_PREF_SIZE);
+
+        // MISMO estilo EXACTO que el TownHall pero con 50% opacidad
+        panel.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.50); " + // 50% opacidad igual que TownHall
+                        "-fx-background-radius: 15; " +
+                        "-fx-border-color: #dcdde1; " +
+                        "-fx-border-width: 1; " +
+                        "-fx-border-radius: 15; " +
+                        "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.15), 15, 0.5, 0, 3);"
+        );
+
+        // Título
+        Label title = new Label("Juego en Pausa");
+        title.setStyle("-fx-font-size: 22px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;");
+
+        // Separador elegante
+        Region separator = new Region();
+        separator.setPrefHeight(2);
+        separator.setPrefWidth(180);
+        separator.setStyle("-fx-background-color: linear-gradient(to right, transparent, #d4af37, transparent);");
+
+        // Contenedor de botones
+        VBox buttonContainer = new VBox(10);
+        buttonContainer.setAlignment(Pos.CENTER);
+
+        // Botón Reanudar
+        Button resumeButton = createPauseButton("▶ Reanudar");
+        resumeButton.setOnAction(e -> {
+            hidePauseMenu();
+            if (gameTimer != null) {
+                gameTimer.startTimer();
+            }
+        });
+
+        // Botón Salir al Menú
+        Button exitButton = createPauseButton("🚪 Salir al Menú");
+        exitButton.setOnAction(e -> {
+            System.out.println("Saliendo al menú principal...");
+            Stage stage = (Stage) root.getScene().getWindow();
+            stage.close();
+        });
+
+        buttonContainer.getChildren().addAll(resumeButton, exitButton);
+        panel.getChildren().addAll(title, separator, buttonContainer);
+
+        return panel;
+    }
+
+    /**
+     * Crea un botón para el menú de pausa con el MISMO estilo que TownHall (50% opacidad)
+     */
+    private Button createPauseButton(String text) {
+        HBox buttonContent = new HBox(8);
+        buttonContent.setAlignment(Pos.CENTER);
+        buttonContent.setPadding(new Insets(8, 20, 8, 20));
+
+        Label textLabel = new Label(text);
+        textLabel.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;");
+
+        buttonContent.getChildren().add(textLabel);
+
+        Button button = new Button();
+        button.setGraphic(buttonContent);
+        button.setPrefWidth(200);
+        button.setPrefHeight(45);
+
+        // ESTILO BASE con 50% opacidad igual que TownHall
+        String baseStyle =
+                "-fx-background-color: rgba(255, 255, 255, 0.50); " + // 50% opacidad
+                        "-fx-background-radius: 8; " +
+                        "-fx-border-color: #dcdde1; " +
+                        "-fx-border-width: 1; " +
+                        "-fx-border-radius: 8; " +
+                        "-fx-cursor: hand; " +
+                        "-fx-text-fill: #2c3e50;";
+
+        // Determinar color del borde según el botón (haciéndolo final)
+        final String borderColor = text.contains("Salir") ? "#e74c3c" : "#2ecc71";
+
+        // Aplicar el color de borde específico
+        button.setStyle(baseStyle +
+                "-fx-border-color: " + borderColor + ";" +
+                "-fx-border-width: 2;");
+
+        // Determinar color de sombra (también final)
+        final String shadowColor = text.contains("Salir") ?
+                "rgba(231, 76, 60, 0.4)" : "rgba(46, 204, 113, 0.4)";
+
+        // EFECTO HOVER IDÉNTICO a los botones del TownHall
+        button.setOnMouseEntered(e -> {
+            String hoverStyle =
+                    "-fx-background-color: rgba(236, 240, 241, 0.50); " + // 50% opacidad en hover
+                            "-fx-background-radius: 8; " +
+                            "-fx-border-color: " + borderColor + ";" +
+                            "-fx-border-width: 2.5; " +
+                            "-fx-border-radius: 8; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-effect: dropshadow(gaussian, " + shadowColor + ", 8, 0.5, 0, 2);";
+
+            button.setStyle(hoverStyle);
+            button.setScaleX(1.02);
+            button.setScaleY(1.02);
+        });
+
+        button.setOnMouseExited(e -> {
+            button.setStyle(baseStyle +
+                    "-fx-border-color: " + borderColor + ";" +
+                    "-fx-border-width: 2;");
+            button.setScaleX(1.0);
+            button.setScaleY(1.0);
+        });
+
+        // Efecto al presionar
+        button.setOnMousePressed(e -> {
+            button.setStyle(baseStyle +
+                    "-fx-border-color: " + borderColor + ";" +
+                    "-fx-border-width: 3; " +
+                    "-fx-background-color: rgba(220, 220, 220, 0.50);"); // 50% opacidad
+        });
+
+        button.setOnMouseReleased(e -> {
+            button.setStyle(baseStyle +
+                    "-fx-border-color: " + borderColor + ";" +
+                    "-fx-border-width: 2;");
+        });
+
+        return button;
+    }
+
+    /**
+     * Muestra el menú de pausa con efecto de anochecer
+     */
+    private void showPauseMenu() {
+        if (isGamePaused || pauseOverlay != null) return;
+
+        isGamePaused = true;
+
+        // Crear overlay oscuro que cubra TODA la pantalla
+        pauseOverlay = new StackPane();
+
+        // Usar fondo negro con 85% opacidad para efecto anochecer
+        pauseOverlay.setStyle("-fx-background-color: rgba(0, 0, 0, 0.85);");
+
+        // IMPORTANTE: Asegurar que cubra toda el área visible
+        pauseOverlay.setMinSize(Region.USE_COMPUTED_SIZE, Region.USE_COMPUTED_SIZE);
+        pauseOverlay.setPrefSize(root.getWidth(), root.getHeight());
+        pauseOverlay.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
+
+        // Vincular tamaño al root para que se ajuste automáticamente
+        pauseOverlay.prefWidthProperty().bind(root.widthProperty());
+        pauseOverlay.prefHeightProperty().bind(root.heightProperty());
+
+        pauseOverlay.setOpacity(0); // Comienza transparente para la animación
+
+        // Crear panel de pausa
+        VBox pauseMenu = createPauseMenu();
+        pauseMenu.setOpacity(0); // Comienza transparente para la animación
+        pauseMenu.setScaleX(0.8);
+        pauseMenu.setScaleY(0.8);
+
+        pauseOverlay.getChildren().add(pauseMenu);
+        StackPane.setAlignment(pauseMenu, Pos.CENTER);
+
+        // Asegurar que el overlay esté al frente de TODO
+        root.getChildren().add(pauseOverlay);
+        pauseOverlay.toFront();
+
+        // Forzar layout para asegurar que cubre toda el área
+        pauseOverlay.layout();
+
+        // Deshabilitar interacción con el juego
+        disableGameInteractions(true);
+
+        // Animación suave de entrada
+        FadeTransition overlayFade = new FadeTransition(Duration.millis(500), pauseOverlay);
+        overlayFade.setToValue(1.0);
+
+        FadeTransition menuFade = new FadeTransition(Duration.millis(400), pauseMenu);
+        menuFade.setToValue(1.0);
+        menuFade.setDelay(Duration.millis(100));
+
+        ScaleTransition menuScale = new ScaleTransition(Duration.millis(400), pauseMenu);
+        menuScale.setToX(1.0);
+        menuScale.setToY(1.0);
+        menuScale.setDelay(Duration.millis(100));
+        menuScale.setInterpolator(javafx.animation.Interpolator.EASE_OUT);
+
+        javafx.animation.ParallelTransition parallel = new javafx.animation.ParallelTransition(
+                overlayFade, menuFade, menuScale
+        );
+        parallel.play();
+
+        System.out.println("⏸ Juego en pausa - Mostrando menú de pausa");
+        System.out.println("📏 Tamaño overlay: " + root.getWidth() + "x" + root.getHeight());
+    }
+
+    /**
+     * Oculta el menú de pausa con animación suave
+     */
+    private void hidePauseMenu() {
+        if (!isGamePaused || pauseOverlay == null) return;
+
+        // Obtener el menú para animarlo
+        VBox pauseMenu = null;
+        for (Node node : pauseOverlay.getChildren()) {
+            if (node instanceof VBox) {
+                pauseMenu = (VBox) node;
+                break;
+            }
+        }
+
+        // Animación suave de salida
+        if (pauseMenu != null) {
+            FadeTransition menuFade = new FadeTransition(Duration.millis(300), pauseMenu);
+            menuFade.setToValue(0);
+
+            ScaleTransition menuScale = new ScaleTransition(Duration.millis(300), pauseMenu);
+            menuScale.setToX(0.8);
+            menuScale.setToY(0.8);
+
+            FadeTransition overlayFade = new FadeTransition(Duration.millis(400), pauseOverlay);
+            overlayFade.setToValue(0);
+            overlayFade.setDelay(Duration.millis(100));
+
+            overlayFade.setOnFinished(e -> {
+                root.getChildren().remove(pauseOverlay);
+                pauseOverlay = null;
+                isGamePaused = false;
+                disableGameInteractions(false);
+                System.out.println("▶ Juego reanudado");
+            });
+
+            javafx.animation.ParallelTransition parallel = new javafx.animation.ParallelTransition(
+                    menuFade, menuScale, overlayFade
+            );
+            parallel.play();
+        } else {
+            // Si no hay menú, simplemente remover
+            root.getChildren().remove(pauseOverlay);
+            pauseOverlay = null;
+            isGamePaused = false;
+            disableGameInteractions(false);
+            System.out.println("▶ Juego reanudado");
+        }
+    }
+
+    /**
+     * Habilita/deshabilita la interacción con elementos del juego
+     */
+    private void disableGameInteractions(boolean disable) {
+        if (disable) {
+            // Deshabilitar TODOS los elementos del root excepto el overlay de pausa
+            for (int i = 0; i < root.getChildren().size(); i++) {
+                Node node = root.getChildren().get(i);
+                if (node != pauseOverlay && node != buildingGhost) {
+                    node.setMouseTransparent(true);
+                    node.setFocusTraversable(false);
+                }
+            }
+
+            // Asegurar que el overlay de pausa sea interactivo
+            if (pauseOverlay != null) {
+                pauseOverlay.setMouseTransparent(false);
+                pauseOverlay.setFocusTraversable(true);
+            }
+
+            // Deshabilitar modo construcción si está activo
+            if (isBuildingMode) {
+                cancelBuildingMode();
+            }
+
+            // Deshabilitar eventos del mouse en la escena
+            if (root.getScene() != null) {
+                root.getScene().setOnMouseMoved(null);
+                root.getScene().setOnMouseClicked(null);
+                root.getScene().setOnMousePressed(null);
+                root.setCursor(javafx.scene.Cursor.DEFAULT);
+            }
+
+            // Asegurar que el overlay esté al frente
+            if (pauseOverlay != null) {
+                pauseOverlay.toFront();
+            }
+        } else {
+            // Rehabilitar todos los elementos
+            for (Node node : root.getChildren()) {
+                node.setMouseTransparent(false);
+                node.setFocusTraversable(true);
+            }
+
+            // Rehabilitar eventos del mouse
+            if (root.getScene() != null) {
+                setupBuildingListeners(root.getScene());
+            }
+        }
     }
 
     // ==================== PANEL SUPERIOR CON TIMER INTEGRADO ====================
@@ -183,7 +519,7 @@ public class GameApp extends Application {
         for (Node node : timerPanel.getChildren()) {
             if (node instanceof Label) {
                 Label label = (Label) node;
-                if (label.getText().matches("\\d{2}:\\d{2}:\\d{2}")) { // Si es el timer (00:00:00)
+                if (label.getText().matches("\\d{2}:\\d{2}:\\d{2}")) {
                     label.setStyle(
                             "-fx-font-size: 20px; " +
                                     "-fx-font-weight: bold; " +
@@ -197,6 +533,9 @@ public class GameApp extends Application {
                     if (buttonNode instanceof Button) {
                         Button button = (Button) buttonNode;
                         applyTownHallStyleToButton(button);
+
+                        // Asegurar que los botones funcionen incluso cuando el juego está en pausa
+                        button.setMouseTransparent(false);
                     }
                 }
             }
@@ -323,6 +662,7 @@ public class GameApp extends Application {
     /**
      * Método para posicionar el panel superior automáticamente
      */
+    // En el método positionTopPanel(), añade:
     private void positionTopPanel() {
         for (Node node : root.getChildren()) {
             if (node instanceof StackPane) {
@@ -343,8 +683,13 @@ public class GameApp extends Application {
                         node.setLayoutX((windowWidth - panelWidth) / 2);
                         node.setLayoutY(15);
 
-                        // Asegurar que esté al frente
+                        // Asegurar que esté al frente (pero detrás del overlay de pausa)
                         node.toFront();
+
+                        // Asegurar que el overlay de pausa esté siempre más al frente
+                        if (pauseOverlay != null) {
+                            pauseOverlay.toFront();
+                        }
 
                         System.out.println("📍 Panel superior posicionado: " + panelWidth + "x" + panelHeight);
                         break;

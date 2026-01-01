@@ -19,6 +19,20 @@ public class Timer {
     private Button pauseClock;
     private VBox timerPanel;
 
+    // NUEVO: Añadir atributo para el listener
+    private PauseListener pauseListener;
+
+    // NUEVO: Definir la interfaz interna
+    public interface PauseListener {
+        void onPause();
+        void onResume();
+    }
+
+    // NUEVO: Método para establecer el listener
+    public void setPauseListener(PauseListener listener) {
+        this.pauseListener = listener;
+    }
+
     // Constructor
     public Timer() {
         initializeTimer();
@@ -42,6 +56,11 @@ public class Timer {
             pauseClock.setDisable(false);
             startClock.setStyle("-fx-background-color: #95a5a6; -fx-text-fill: #7f8c8d;");
             pauseClock.setStyle("-fx-background-color: #e74c3c; -fx-text-fill: white;");
+
+            // NUEVO: Notificar reanudación
+            if (pauseListener != null) {
+                pauseListener.onResume();
+            }
         });
 
         pauseClock = new Button("⏸ Pausar");
@@ -55,6 +74,11 @@ public class Timer {
             pauseClock.setDisable(true);
             startClock.setStyle("-fx-background-color: #2ecc71; -fx-text-fill: white;");
             pauseClock.setStyle("-fx-background-color: #95a5a6; -fx-text-fill: #7f8c8d;");
+
+            // NUEVO: Notificar pausa
+            if (pauseListener != null) {
+                pauseListener.onPause();
+            }
         });
         pauseClock.setDisable(true);
         pauseClock.setStyle("-fx-background-color: #95a5a6; -fx-text-fill: #7f8c8d;");
@@ -139,5 +163,10 @@ public class Timer {
                             "-fx-border-radius: 12;"
             );
         }
+    }
+
+    // NUEVO: Método para verificar si está pausado
+    public boolean isPaused() {
+        return !startClock.isDisabled();
     }
 }
