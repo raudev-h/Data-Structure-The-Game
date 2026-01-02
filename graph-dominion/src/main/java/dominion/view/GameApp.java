@@ -46,7 +46,7 @@ public class GameApp extends Application {
     private boolean isBuildingMode = false;
     private ImageView buildingGhost;
     private String currentBuildingType = "";
-    private List<ImageView> placedBuildings = new ArrayList<>();
+    private final List<ImageView> placedBuildings = new ArrayList<>();
     private int width = 100;
     private int height = 100;
     private GameControler gameControler;
@@ -57,7 +57,7 @@ public class GameApp extends Application {
     private StackPane pauseOverlay;
     private boolean isGamePaused = false;
     private Popup barracksPopup;    // Para el menú del cuartel
-    private List<ImageView> createdKnights = new ArrayList<>(); // Para rastrear caballeros creados
+    private final List<ImageView> createdKnights = new ArrayList<>(); // Para rastrear caballeros creados
 
 
 
@@ -511,10 +511,8 @@ public class GameApp extends Application {
         topPanel.setMaxWidth(Region.USE_PREF_SIZE);
         topPanel.setMinWidth(Region.USE_PREF_SIZE);
 
-        // Contenedor para posicionar
-        StackPane container = new StackPane(topPanel);
 
-        return container;
+        return new StackPane(topPanel);
     }
 
     /**
@@ -534,8 +532,7 @@ public class GameApp extends Application {
 
         // Buscar y modificar los elementos del timer
         for (Node node : timerPanel.getChildren()) {
-            if (node instanceof Label) {
-                Label label = (Label) node;
+            if (node instanceof Label label) {
                 if (label.getText().matches("\\d{2}:\\d{2}:\\d{2}")) {
                     label.setStyle(
                             "-fx-font-size: 20px; " +
@@ -543,12 +540,10 @@ public class GameApp extends Application {
                                     "-fx-text-fill: #2c3e50;"
                     );
                 }
-            } else if (node instanceof HBox) {
-                HBox buttonBox = (HBox) node;
+            } else if (node instanceof HBox buttonBox) {
                 // Modificar los botones del timer
                 for (Node buttonNode : buttonBox.getChildren()) {
-                    if (buttonNode instanceof Button) {
-                        Button button = (Button) buttonNode;
+                    if (buttonNode instanceof Button button) {
                         applyTownHallStyleToButton(button);
 
                         // Asegurar que los botones funcionen incluso cuando el juego está en pausa
@@ -670,16 +665,14 @@ public class GameApp extends Application {
     }
 
     /**
-     * Método para posicionar el panel superior automáticamente
+     *  posicionar el panel superior automáticamente
      */
     private void positionTopPanel() {
         for (Node node : root.getChildren()) {
-            if (node instanceof StackPane) {
-                StackPane stackPane = (StackPane) node;
+            if (node instanceof StackPane stackPane) {
                 if (!stackPane.getChildren().isEmpty()) {
-                    Node child = stackPane.getChildren().get(0);
-                    if (child instanceof HBox) {
-                        HBox topPanel = (HBox) child;
+                    Node child = stackPane.getChildren().getFirst();
+                    if (child instanceof HBox topPanel) {
 
                         // Forzar cálculo de dimensiones
                         topPanel.applyCss();
@@ -1049,7 +1042,13 @@ public class GameApp extends Application {
         if(currentBuildingType.equalsIgnoreCase("Casa")){
             creado = territory1.getTownHall().createHouse();
         } else if(currentBuildingType.equalsIgnoreCase("Cuartel")){
+
+            //Crear cuarte en la base de datos
             creado = territory1.getTownHall().createMilitaryBase();
+            territory1.getTownHall().processConstructionQueue();
+            System.out.println("El territorio tiene: "+ territory1.getTownHall().getMilitaryBases().size()+ "military Bases");
+            //Aqui
+
         }
 
         if (!creado) {
@@ -1543,8 +1542,7 @@ public class GameApp extends Application {
         }
 
         for (Node node : root.getChildren()) {
-            if (node instanceof ImageView && node != buildingGhost) {
-                ImageView existingBuilding = (ImageView) node;
+            if (node instanceof ImageView existingBuilding && node != buildingGhost) {
                 if (!existingBuilding.equals(buildingGhost)) {
                     Rectangle existingBounds = new Rectangle(
                             existingBuilding.getX() + margin,
@@ -1736,8 +1734,7 @@ public class GameApp extends Application {
         }
 
         for (Node node : root.getChildren()) {
-            if (node instanceof ImageView && node != buildingGhost) {
-                ImageView existing = (ImageView) node;
+            if (node instanceof ImageView existing && node != buildingGhost) {
 
                 if (existing.getFitWidth() == 50 && existing.getFitHeight() == 50) {
                     Rectangle existingBounds = new Rectangle(
@@ -1755,8 +1752,7 @@ public class GameApp extends Application {
         }
 
         for (Node node : root.getChildren()) {
-            if (node instanceof ImageView && node != buildingGhost) {
-                ImageView existing = (ImageView) node;
+            if (node instanceof ImageView existing && node != buildingGhost) {
 
                 if (existing.getFitWidth() >= 100 || existing.getFitHeight() >= 100) {
                     Rectangle existingBounds = new Rectangle(
@@ -1775,8 +1771,7 @@ public class GameApp extends Application {
 
         // Verificar colisión con árboles con margen reducido
         for (Node node : root.getChildren()) {
-            if (node instanceof ImageView) {
-                ImageView imageView = (ImageView) node;
+            if (node instanceof ImageView imageView) {
 
                 if (imageView.getId() != null && imageView.getId().startsWith("Arbol_")) {
                     Rectangle treeBounds = new Rectangle(
@@ -1795,8 +1790,7 @@ public class GameApp extends Application {
 
         // Verificar colisión con minas con margen reducido
         for (Node node : root.getChildren()) {
-            if (node instanceof ImageView) {
-                ImageView imageView = (ImageView) node;
+            if (node instanceof ImageView imageView) {
 
                 if (imageView.getId() != null && imageView.getId().startsWith("Mina_")) {
                     Rectangle mineBounds = new Rectangle(
@@ -1874,8 +1868,7 @@ public class GameApp extends Application {
         List<ImageView> units = new ArrayList<>();
 
         for (Node node : root.getChildren()) {
-            if (node instanceof ImageView && node != buildingGhost) {
-                ImageView imageView = (ImageView) node;
+            if (node instanceof ImageView imageView && node != buildingGhost) {
                 if (imageView.getFitWidth() == 50 && imageView.getFitHeight() == 50) {
                     if (imageView.getId() != null && imageView.getId().startsWith(unitType)) {
                         units.add(imageView);
@@ -2096,8 +2089,7 @@ public class GameApp extends Application {
 
         // Verificar colisión con árboles
         for (Node node : root.getChildren()) {
-            if (node instanceof ImageView) {
-                ImageView imageView = (ImageView) node;
+            if (node instanceof ImageView imageView) {
 
                 // Si es un árbol
                 if (imageView.getId() != null && imageView.getId().startsWith("Arbol_")) {
@@ -2117,8 +2109,7 @@ public class GameApp extends Application {
 
         // Verificar colisión con unidades
         for (Node node : root.getChildren()) {
-            if (node instanceof ImageView) {
-                ImageView imageView = (ImageView) node;
+            if (node instanceof ImageView imageView) {
 
                 // Si es una unidad (tamaño 50x50)
                 if (imageView.getFitWidth() == 50 && imageView.getFitHeight() == 50) {
@@ -2144,8 +2135,7 @@ public class GameApp extends Application {
 
         // Verificar colisión con otras minas
         for (Node node : root.getChildren()) {
-            if (node instanceof ImageView) {
-                ImageView imageView = (ImageView) node;
+            if (node instanceof ImageView imageView) {
 
                 // Si es una mina
                 if (imageView.getId() != null && imageView.getId().startsWith("Mina_")) {
@@ -2164,13 +2154,9 @@ public class GameApp extends Application {
         }
 
         // Verificar que no esté demasiado cerca de los bordes
-        if (x < 20 || y < 20 ||
+        return x < 20 || y < 20 ||
                 x + size > windowWidth - 20 ||
-                y + size > windowHeight - 20) {
-            return true;
-        }
-
-        return false;
+                y + size > windowHeight - 20;
     }
 
     private boolean checkMineCollision(double x, double y, double size) {
@@ -2313,8 +2299,7 @@ public class GameApp extends Application {
                 // Verificar colisión simple
                 boolean hasCollision = false;
                 for (Node node : root.getChildren()) {
-                    if (node instanceof ImageView) {
-                        ImageView existing = (ImageView) node;
+                    if (node instanceof ImageView existing) {
                         if (Math.abs(existing.getX() - x) < mineSize &&
                                 Math.abs(existing.getY() - y) < mineSize) {
                             hasCollision = true;
@@ -2579,7 +2564,7 @@ public class GameApp extends Application {
      */
     private void createKnightUnit(Popup barracksPopup) {
         try {
-            // Verificar recursos usando el método spend existente
+            // Verificar recursos
             if (territory1 != null && territory1.getTownHall() != null) {
                 // Crear mapa de costos
                 Map<ResourceType, Integer> knightCost = new HashMap<>();
@@ -2600,6 +2585,10 @@ public class GameApp extends Application {
                         // Crear caballero cerca del cuartel
                         if (createKnightNextToBarracks(nearestBarracks)) {
                             System.out.println("♞ Caballero creado exitosamente!");
+                            //Crear caballero en el backend
+
+
+
                         } else {
                             System.out.println("⚠️ No se pudo crear el caballero cerca del cuartel");
                             // Devolver los recursos si no se pudo crear
@@ -2632,8 +2621,7 @@ public class GameApp extends Application {
 
         // Buscar entre todos los nodos del root
         for (Node node : root.getChildren()) {
-            if (node instanceof ImageView) {
-                ImageView imageView = (ImageView) node;
+            if (node instanceof ImageView imageView) {
 
                 // Verificar si es un cuartel por ID
                 if (imageView.getId() != null && imageView.getId().startsWith("Cuartel_")) {
@@ -2818,8 +2806,7 @@ public class GameApp extends Application {
 
         // Verificar colisión con otras unidades (margen mínimo)
         for (Node node : root.getChildren()) {
-            if (node instanceof ImageView) {
-                ImageView existing = (ImageView) node;
+            if (node instanceof ImageView existing) {
 
                 // Si es una unidad
                 if (existing.getFitWidth() == 50 && existing.getFitHeight() == 50) {
@@ -2839,8 +2826,7 @@ public class GameApp extends Application {
 
         // Verificar colisión con árboles (margen mínimo)
         for (Node node : root.getChildren()) {
-            if (node instanceof ImageView) {
-                ImageView imageView = (ImageView) node;
+            if (node instanceof ImageView imageView) {
 
                 if (imageView.getId() != null && imageView.getId().startsWith("Arbol_")) {
                     Rectangle treeBounds = new Rectangle(
@@ -2859,8 +2845,7 @@ public class GameApp extends Application {
 
         // Verificar colisión con minas (margen mínimo)
         for (Node node : root.getChildren()) {
-            if (node instanceof ImageView) {
-                ImageView imageView = (ImageView) node;
+            if (node instanceof ImageView imageView) {
 
                 if (imageView.getId() != null && imageView.getId().startsWith("Mina_")) {
                     Rectangle mineBounds = new Rectangle(

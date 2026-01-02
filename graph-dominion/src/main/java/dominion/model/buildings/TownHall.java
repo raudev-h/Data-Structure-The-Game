@@ -7,6 +7,7 @@ import dominion.model.units.Miner;
 import dominion.model.units.ResourceCollector;
 import dominion.model.units.WoodCutter;
 
+import javax.sound.midi.Soundbank;
 import java.util.*;
 
 public class TownHall {
@@ -77,6 +78,7 @@ public class TownHall {
     public Deque<ConstructionOrder> getConstructionQueue() {
         return constructionQueue;
     }
+
 
     public void increasePopulationCapacity(int amount){
         if (amount > 0) {
@@ -182,6 +184,7 @@ public class TownHall {
 
 
     public void processConstructionQueue(){
+
         ConstructionOrder currentOrder = constructionQueue.peek();
         if (currentOrder != null){
             currentOrder.tick();
@@ -204,6 +207,7 @@ public class TownHall {
                     this.territory,
                     BUILDINGS_HEALTH
             );
+
             default -> { return;}
         }
         this.ownedBuildings.add(newBuilding);
