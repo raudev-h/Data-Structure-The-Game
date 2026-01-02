@@ -184,14 +184,22 @@ public class TownHall {
 
 
     public void processConstructionQueue(){
+        System.out.println("Procesando construcción ---------");
 
         ConstructionOrder currentOrder = constructionQueue.peek();
         if (currentOrder != null){
             currentOrder.tick();
+            System.out.println("Tiempo restante para " + currentOrder.getType() +
+                    ": " + currentOrder.getRemainingTime() + " segundos");
+
             if (currentOrder.isComplete()){
+                System.out.println("✅ ¡CONSTRUCCIÓN COMPLETADA EN BACKEND! " + currentOrder.getType());
                 completeConstruction(currentOrder);
                 constructionQueue.poll();
+                System.out.println("Total edificios después de completar: " + ownedBuildings.size());
             }
+        } else {
+            System.out.println("No hay construcciones en cola");
         }
     }
     public void completeConstruction(ConstructionOrder order){

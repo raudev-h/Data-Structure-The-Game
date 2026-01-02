@@ -1,7 +1,8 @@
 package dominion.view;
 
 import com.almasb.fxgl.app.GameController;
-import javafx.animation.RotateTransition;
+import dominion.model.buildings.ConstructionOrder;
+import javafx.animation.*;
 import dominion.core.GameControler;
 import dominion.core.GameMap;
 import dominion.core.GameTimer;
@@ -9,11 +10,6 @@ import dominion.model.buildings.TownHall;
 import dominion.model.players.Player;
 import dominion.model.resources.ResourceType;
 import dominion.model.territories.Territory;
-import javafx.animation.FadeTransition;
-import javafx.animation.KeyFrame;
-import javafx.animation.ScaleTransition;
-import javafx.animation.Timeline;
-import javafx.animation.TranslateTransition;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
@@ -32,10 +28,7 @@ import javafx.scene.shape.Rectangle;
 import javafx.stage.*;
 import javafx.util.Duration;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class GameApp extends Application {
 
@@ -58,6 +51,11 @@ public class GameApp extends Application {
     private boolean isGamePaused = false;
     private Popup barracksPopup;    // Para el menú del cuartel
     private final List<ImageView> createdKnights = new ArrayList<>(); // Para rastrear caballeros creados
+    // ==================== VARIABLES PARA CONSTRUCCIÓN ====================
+    private final Map<String, ImageView> constructionVisuals = new HashMap<>();
+    private final Map<String, String> buildingTypesUnderConstruction = new HashMap<>();
+    private Timeline constructionUpdateTimeline;
+    private final Map<String, Position> buildingPositions = new HashMap<>();
 
 
 
@@ -83,6 +81,8 @@ public class GameApp extends Application {
 
         // 4. Configurar el sistema de pausa (ANTES de otros elementos)
         setupPauseSystem();
+
+        startConstructionUpdateLoop();
 
         // 5. Añadir TownHall INTERACTIVO
         addInteractiveTownHall();
@@ -142,6 +142,746 @@ public class GameApp extends Application {
             }
         });
     }
+
+    // En el método start(), después de inicializar todo:
+    private void startConstructionUpdateLoop() {
+        constructionUpdateTimeline = new Timeline(
+                new KeyFrame(Duration.seconds(1), e -> updateConstructions())
+        );
+        constructionUpdateTimeline.setCycleCount(Timeline.INDEFINITE);
+        constructionUpdateTimeline.play();
+        System.out.println("▶️ Iniciando ciclo de actualización de construcciones");
+    }
+    private void stopConstructionUpdateLoop() {
+        if (constructionUpdateTimeline != null) {
+            constructionUpdateTimeline.stop();
+            System.out.println("⏹️ Deteniendo ciclo de actualización de construcciones");
+        }
+    }
+    private void restartConstructionUpdateLoopIfNeeded() {
+        if (constructionUpdateTimeline == null || constructionUpdateTimeline.getStatus() != Animation.Status.RUNNING) {
+            startConstructionUpdateLoop();
+        }
+    }
+
+
+    // Método para actualizar construcciones
+    private void updateConstructions() {
+        // Procesar la cola de construcción del backend
+        if (territory1 != null && territory1.getTownHall() != null) {
+            territory1.getTownHall().processConstructionQueue();
+
+            // Sincronizar con el backend
+            syncConstructionsWithBackend();
+        }
+    }
+
+    // Método para convertir tipo de construcción a nombre de imagen
+    private String getBuildingTypeForImage(String buildingType) {
+        if (buildingType == null) return "casa";
+
+        String typeUpper = buildingType.toUpperCase();
+
+        if (typeUpper.contains("MILITARY_BASE") || typeUpper.contains("BARRACKS") ||
+                typeUpper.contains("CUARTEL")) {
+            return "Cuartel";
+        } else if (typeUpper.contains("HOUSE") || typeUpper.contains("CASA")) {
+            return "casa";
+        }
+        return "casa"; // Por defecto
+    }
+
+    private void syncConstructionsWithBackend() {
+        if (territory1 == null || territory1.getTownHall() == null) return;
+
+        // Obtener construcciones en progreso del backend
+        Deque<ConstructionOrder> constructionQueue = territory1.getTownHall().getConstructionQueue();
+
+        System.out.println("🔄 Sincronizando construcciones...");
+        System.out.println("📋 Construcciones en cola backend: " + constructionQueue.size());
+
+        // Si NO hay construcciones en cola, detener el Timeline
+        if (constructionQueue.isEmpty() && constructionVisuals.isEmpty()) {
+            System.out.println("⏹️ No hay construcciones activas. Deteniendo sincronización...");
+            if (constructionUpdateTimeline != null) {
+                constructionUpdateTimeline.stop();
+            }
+            return;
+        }
+
+        // PRIMERO: Procesar construcciones que están en el backend
+        processBackendConstructions(constructionQueue);
+
+        // SEGUNDO: Verificar si hay construcciones visuales que YA NO están en el backend
+        verificarConstruccionesCompletadasYRemovidas(constructionQueue);
+    }
+
+
+
+
+
+    private void verificarConstruccionesCompletadasYRemovidas(Deque<ConstructionOrder> constructionQueue) {
+        // Crear lista de IDs que están en el backend
+        Set<String> idsEnBackend = new HashSet<>();
+        for (ConstructionOrder order : constructionQueue) {
+            idsEnBackend.add(order.getBuildingId());
+        }
+
+        // Verificar construcciones visuales que ya no están en el backend
+        List<String> construccionesACompletar = new ArrayList<>();
+
+        for (String buildingId : constructionVisuals.keySet()) {
+            if (!idsEnBackend.contains(buildingId)) {
+                // Esta construcción ya no está en el backend, debe estar completada
+                construccionesACompletar.add(buildingId);
+            }
+        }
+
+        // Completar las construcciones que ya terminaron
+        for (String buildingId : construccionesACompletar) {
+            String buildingType = buildingTypesUnderConstruction.get(buildingId);
+            if (buildingType != null) {
+                System.out.println("🏗️ Completando construcción fuera de cola: " + buildingId + " - " + buildingType);
+                completeConstructionNow(buildingId, buildingType);
+            }
+        }
+    }
+
+    private void processBackendConstructions(Deque<ConstructionOrder> constructionQueue) {
+        for (ConstructionOrder order : constructionQueue) {
+            String buildingId = order.getBuildingId();
+            String backendBuildingType = order.getType().toString();
+            String displayBuildingType = getBuildingTypeForImage(backendBuildingType);
+            int remainingTime = order.getRemainingTime();
+
+            System.out.println("📝 Procesando construcción activa: " + displayBuildingType +
+                    " ID: " + buildingId +
+                    " Tiempo restante: " + remainingTime);
+
+            // Si no tenemos una visualización para esta construcción, crearla
+            if (!constructionVisuals.containsKey(buildingId)) {
+                // Obtener posición
+                double x = getConstructionPositionX(buildingId);
+                double y = getConstructionPositionY(buildingId);
+                double width = getBuildingWidth(displayBuildingType);
+                double height = getBuildingHeight(displayBuildingType);
+
+                // Mostrar construcción en progreso
+                showConstructionInProgress(x, y, width, height, displayBuildingType, buildingId);
+
+                System.out.println("🚧 Nueva construcción visual creada para: " + displayBuildingType);
+            }
+
+            // Actualizar progreso
+            ImageView constructionView = constructionVisuals.get(buildingId);
+            if (constructionView != null) {
+                double progress = calculateConstructionProgress(order);
+                updateConstructionProgress(constructionView, progress);
+
+                // SI EL TIEMPO ES 0 O MENOS, COMPLETAR INMEDIATAMENTE
+                if (remainingTime <= 0) {
+                    System.out.println("⏰ ¡Tiempo completado! Reemplazando construcción: " + buildingId);
+                    completeConstructionNow(buildingId, displayBuildingType);
+                }
+            }
+        }
+    }
+
+
+
+
+    private boolean hasConstructionTimeElapsed(String buildingId) {
+        // Aquí necesitas llevar registro del tiempo de inicio
+        // Por simplicidad, asumamos 50 segundos para Cuartel, 30 para Casa
+        String buildingType = buildingTypesUnderConstruction.get(buildingId);
+        if (buildingType == null) return false;
+
+        int expectedTime = getTotalBuildTimeForType(buildingType);
+
+        // Llevar registro del tiempo de inicio (en lugar de esto, usa un mapa)
+        Map<String, Long> startTimes = new HashMap<>();
+
+        if (!startTimes.containsKey(buildingId)) {
+            startTimes.put(buildingId, System.currentTimeMillis());
+            return false;
+        }
+
+        long startTime = startTimes.get(buildingId);
+        long elapsedSeconds = (System.currentTimeMillis() - startTime) / 1000;
+
+        return elapsedSeconds >= expectedTime;
+    }
+
+    // Método para obtener tiempo total de construcción según el tipo
+    private int getTotalBuildTimeForType(String buildingType) {
+        if (buildingType == null) return 30; // Tiempo por defecto
+
+        String typeLower = buildingType.toLowerCase();
+
+        if (typeLower.contains("cuartel") || typeLower.contains("military") ||
+                typeLower.contains("barracks")) {
+            return 50; // 50 segundos para Cuartel
+        } else if (typeLower.contains("casa") || typeLower.contains("house")) {
+            return 30; // 30 segundos para Casa
+        } else if (typeLower.contains("mina") || typeLower.contains("mine")) {
+            return 20; // 20 segundos para Mina
+        }
+
+        return 30; // Tiempo por defecto
+    }
+
+    // Método para obtener nombre amigable del tipo de edificio
+    private String getFriendlyBuildingName(String buildingType) {
+        if (buildingType == null) return "Edificio";
+
+        String typeUpper = buildingType.toUpperCase();
+
+        if (typeUpper.contains("MILITARY_BASE") || typeUpper.contains("BARRACKS") ||
+                typeUpper.contains("CUARTEL") || typeUpper.contains("MILITARY")) {
+            return "Cuartel";
+        } else if (typeUpper.contains("HOUSE") || typeUpper.contains("CASA")) {
+            return "Casa";
+        } else if (typeUpper.contains("MINE") || typeUpper.contains("MINA")) {
+            return "Mina";
+        }
+
+        return buildingType;
+    }
+
+
+    private void completeConstructionNow(String buildingId, String buildingType) {
+        ImageView constructionView = constructionVisuals.get(buildingId);
+
+        if (constructionView != null) {
+            System.out.println("🏗️ Completando construcción visualmente: " + buildingId + " - " + buildingType);
+
+            double x = constructionView.getX();
+            double y = constructionView.getY();
+            double width = constructionView.getFitWidth();
+            double height = constructionView.getFitHeight();
+
+            // Primero remover la visualización de construcción
+            root.getChildren().remove(constructionView);
+
+            // Limpiar referencias
+            constructionVisuals.remove(buildingId);
+            buildingTypesUnderConstruction.remove(buildingId);
+            buildingPositions.remove(buildingId);
+
+            // Crear el edificio final
+            createFinalBuilding(x, y, width, height, buildingType);
+
+            // Actualizar recursos si es necesario
+            updateResourceDisplay();
+
+            System.out.println("✅ Construcción completada visualmente: " + buildingType);
+        } else {
+            System.out.println("⚠️ No se encontró vista de construcción para: " + buildingId);
+        }
+    }
+
+    // Método para calcular progreso de construcción (versión simplificada)
+    private double calculateConstructionProgress(ConstructionOrder order) {
+        if (order == null) return 0.0;
+
+        try {
+            int remainingTime = order.getRemainingTime();
+            String buildingType = order.getType().toString();
+            int totalTime = getTotalBuildTimeForType(buildingType);
+
+            if (totalTime <= 0) return 0.0;
+
+            int elapsedTime = totalTime - remainingTime;
+            double progress = Math.min(1.0, Math.max(0.0, (double) elapsedTime / totalTime));
+
+            // Para debug
+            if (progress >= 0.95 && progress < 1.0) {
+                System.out.println("📊 Progreso de " + buildingType + ": " +
+                        String.format("%.1f", progress * 100) + "% " +
+                        "(" + elapsedTime + "/" + totalTime + "s)");
+            }
+
+            return progress;
+
+        } catch (Exception e) {
+            System.err.println("❌ Error calculando progreso: " + e.getMessage());
+            return 0.0;
+        }
+    }
+
+    // Método alternativo si no se puede obtener el tiempo total
+    private double calculateFallbackProgress(ConstructionOrder order) {
+        try {
+            String buildingType = order.getType().toString();
+            int totalTime = getTotalBuildTime(buildingType);
+            int remainingTime = order.getRemainingTime();
+
+            if (totalTime <= 0) return 0.0;
+
+            int elapsedTime = totalTime - remainingTime;
+            return Math.min(1.0, Math.max(0.0, (double) elapsedTime / totalTime));
+        } catch (Exception e) {
+            return 0.0;
+        }
+    }
+
+    // Método para verificar si una construcción está completada
+    private boolean isConstructionCompleted(ConstructionOrder order) {
+        if (order == null) return false;
+
+        try {
+            // Opción 1: Si tiene método isCompleted()
+            if (order.getClass().getMethod("isCompleted") != null) {
+                return (boolean) order.getClass().getMethod("isCompleted").invoke(order);
+            }
+
+            // Opción 2: Si tiene método isFinished()
+            else if (order.getClass().getMethod("isFinished") != null) {
+                return (boolean) order.getClass().getMethod("isFinished").invoke(order);
+            }
+
+            // Opción 3: Verificar por tiempo restante
+            else if (order.getClass().getMethod("getRemainingTime") != null) {
+                int remainingTime = (int) order.getClass().getMethod("getRemainingTime").invoke(order);
+                return remainingTime <= 0;
+            }
+
+            // Opción 4: Usar el progreso calculado
+            else {
+                double progress = calculateConstructionProgress(order);
+                return progress >= 0.999; // 99.9% completado
+            }
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al verificar si está completada: " + e.getMessage());
+            return false;
+        }
+    }
+
+    // Método auxiliar para obtener tiempo restante de la orden
+    private int getRemainingTimeFromOrder(ConstructionOrder order) {
+        try {
+            if (order.getClass().getMethod("getRemainingTime") != null) {
+                return (int) order.getClass().getMethod("getRemainingTime").invoke(order);
+            } else if (order.getClass().getMethod("getTimeLeft") != null) {
+                return (int) order.getClass().getMethod("getTimeLeft").invoke(order);
+            }
+        } catch (Exception e) {
+            System.err.println("❌ Error al obtener tiempo restante: " + e.getMessage());
+        }
+        return 0;
+    }
+
+    // Método para limpiar construcciones huérfanas
+    private void cleanupOrphanedConstructions(Deque<ConstructionOrder> constructionQueue) {
+        List<String> toRemove = new ArrayList<>();
+
+        for (String constructionId : constructionVisuals.keySet()) {
+            boolean existsInBackend = false;
+            for (ConstructionOrder order : constructionQueue) {
+                if (order.getBuildingId().equals(constructionId)) {
+                    existsInBackend = true;
+                    break;
+                }
+            }
+
+            if (!existsInBackend) {
+                toRemove.add(constructionId);
+            }
+        }
+
+        for (String constructionId : toRemove) {
+            ImageView constructionView = constructionVisuals.remove(constructionId);
+            if (constructionView != null) {
+                root.getChildren().remove(constructionView);
+            }
+            buildingTypesUnderConstruction.remove(constructionId);
+            System.out.println("🧹 Eliminada construcción huérfana: " + constructionId);
+        }
+    }
+
+    // Método para obtener la posición X de la construcción
+    private double getConstructionPositionX(String buildingId) {
+        // Usar el campo de clase buildingPositions
+        if (buildingPositions.containsKey(buildingId)) {
+            return buildingPositions.get(buildingId).x;
+        }
+
+        // Si no se encuentra, buscar en las construcciones visuales
+        ImageView constructionView = constructionVisuals.get(buildingId);
+        if (constructionView != null) {
+            return constructionView.getX();
+        }
+
+        // Valor por defecto
+        return windowWidth * 0.5;
+    }
+
+    // Método para obtener la posición Y de la construcción
+    private double getConstructionPositionY(String buildingId) {
+        // Usar el campo de clase buildingPositions
+        if (buildingPositions.containsKey(buildingId)) {
+            return buildingPositions.get(buildingId).y;
+        }
+
+        // Si no se encuentra, buscar en las construcciones visuales
+        ImageView constructionView = constructionVisuals.get(buildingId);
+        if (constructionView != null) {
+            return constructionView.getY();
+        }
+
+        // Valor por defecto
+        return windowHeight * 0.5;
+    }
+
+    // Método para obtener el ancho del edificio según su tipo
+    private double getBuildingWidth(String buildingType) {
+        if (buildingType == null) return 100;
+
+        String typeLower = buildingType.toLowerCase();
+
+        if (typeLower.contains("cuartel") || typeLower.contains("military_base") ||
+                typeLower.contains("military")) {
+            return 170;
+        }
+        return 100; // Casa u otros edificios
+    }
+
+    // Método para obtener la altura del edificio según su tipo
+    private double getBuildingHeight(String buildingType) {
+        if (buildingType == null) return 100;
+
+        String typeLower = buildingType.toLowerCase();
+
+        if (typeLower.contains("cuartel") || typeLower.contains("military_base") ||
+                typeLower.contains("military")) {
+            return 170;
+        }
+        return 100; // Casa u otros edificios
+    }
+
+
+
+    // Método auxiliar para obtener tiempo total de construcción (debe coincidir con el backend)
+    private int getTotalBuildTime(String buildingType) {
+        if (buildingType.equalsIgnoreCase("HOUSE")) {
+            return 30; // 30 segundos para casa
+        } else if (buildingType.equalsIgnoreCase("MILITARY_BASE")) {
+            return 50; // 50 segundos para cuartel
+        }
+        return 30; // Por defecto
+    }
+
+    // Método para actualizar progreso visual
+    private void updateConstructionProgress(ImageView constructionView, double progress) {
+        // Cambiar la opacidad según el progreso (más opaco a medida que avanza)
+        double minOpacity = 0.3;
+        double maxOpacity = 0.7;
+        double currentOpacity = minOpacity + (progress * (maxOpacity - minOpacity));
+        constructionView.setOpacity(currentOpacity);
+
+        // Si quieres agregar una barra de progreso visual:
+        updateProgressBarOnConstruction(constructionView, progress);
+    }
+
+    // Método para actualizar barra de progreso (opcional)
+    private void updateProgressBarOnConstruction(ImageView constructionView, double progress) {
+        // Buscar si ya tiene una barra de progreso
+        for (Node child : root.getChildren()) {
+            if (child instanceof Pane progressPane) {
+                if (progressPane.getId() != null &&
+                        progressPane.getId().equals("progress_" + constructionView.hashCode())) {
+
+                    // Actualizar la barra existente
+                    updateExistingProgressBar(progressPane, progress);
+                    return;
+                }
+            }
+        }
+
+        // Crear nueva barra de progreso si no existe
+        if (progress > 0 && progress < 1) {
+            createProgressBarForConstruction(constructionView, progress);
+        }
+    }
+
+    // Método para crear barra de progreso
+    private void createProgressBarForConstruction(ImageView constructionView, double progress) {
+        double x = constructionView.getX();
+        double y = constructionView.getY();
+        double width = constructionView.getFitWidth();
+
+        // Fondo de la barra
+        Rectangle background = new Rectangle(width, 5);
+        background.setFill(Color.rgb(100, 100, 100, 0.7));
+        background.setX(x);
+        background.setY(y - 10);
+
+        // Barra de progreso
+        Rectangle progressBar = new Rectangle(width * progress, 5);
+        progressBar.setFill(Color.rgb(0, 200, 0, 0.8));
+        progressBar.setX(x);
+        progressBar.setY(y - 10);
+
+        Pane progressPane = new Pane(background, progressBar);
+        progressPane.setId("progress_" + constructionView.hashCode());
+
+        root.getChildren().add(progressPane);
+    }
+
+    // Método para actualizar barra de progreso existente
+    private void updateExistingProgressBar(Pane progressPane, double progress) {
+        for (Node node : progressPane.getChildren()) {
+            if (node instanceof Rectangle rect && rect.getFill().equals(Color.rgb(0, 200, 0, 0.8))) {
+                double currentWidth = rect.getWidth();
+                double newWidth = rect.getParent().getBoundsInParent().getWidth() * progress;
+
+                if (Math.abs(currentWidth - newWidth) > 1) {
+                    rect.setWidth(newWidth);
+                }
+                break;
+            }
+        }
+    }
+
+    // Método para añadir edificio completado a la lista del backend
+    private void addCompletedBuildingToBackendList(String buildingType) {
+        if (territory1 == null || territory1.getTownHall() == null) return;
+
+        System.out.println("🏗️ Añadiendo edificio completado al backend: " + buildingType);
+
+        // Aquí tu backend ya debería haber añadido el edificio a la lista de ownedBuildings
+        // Solo necesitamos verificar
+        int buildingCount = territory1.getTownHall().getOwnedBuildings().size();
+        System.out.println("📊 Total de edificios en backend: " + buildingCount);
+    }
+
+    private void checkCompletedConstructions() {
+        if (territory1 == null || territory1.getTownHall() == null) return;
+
+        // Obtener construcciones en progreso del backend
+        Deque<ConstructionOrder> constructionQueue = territory1.getTownHall().getConstructionQueue();
+
+        System.out.println("✅ Verificando construcciones completadas...");
+        System.out.println("📋 Construcciones en cola: " + constructionQueue.size());
+
+        List<ConstructionOrder> ordenesCompletadas = new ArrayList<>();
+
+        // Identificar órdenes completadas
+        for (ConstructionOrder order : constructionQueue) {
+            String buildingId = order.getBuildingId();
+            int tiempoRestante = order.getRemainingTime();
+
+            // Si el tiempo restante es 0 o menos, está completado
+            if (tiempoRestante <= 0) {
+                System.out.println("🎯 Construcción completada: " + buildingId);
+
+                // Completar visualmente
+                ImageView constructionView = constructionVisuals.get(buildingId);
+                if (constructionView != null) {
+                    String tipoEdificio = buildingTypesUnderConstruction.get(buildingId);
+                    if (tipoEdificio != null) {
+                        // Completar visualmente
+                        completeConstructionNow(buildingId, tipoEdificio);
+                    }
+                }
+
+                // Añadir a la lista de completadas
+                ordenesCompletadas.add(order);
+            }
+        }
+
+        // IMPORTANTE: Si hay órdenes completadas, sincronizar solo una vez
+        if (!ordenesCompletadas.isEmpty()) {
+            System.out.println("🏗️ " + ordenesCompletadas.size() + " construcción(es) completada(s)");
+
+            // NO llamar a syncConstructionsWithBackend() aquí - ya estamos en un ciclo
+            // En su lugar, actualizar recursos
+            updateResourceDisplay();
+        }
+    }
+
+    // Modifica el método isConstructionCompleteInBackend para usar la lógica real
+    private boolean isConstructionCompleteInBackend(String buildingType) {
+        // Este método ya no se usa directamente
+        // La lógica está en syncConstructionsWithBackend
+        return false;
+    }
+
+    // Método para mostrar una construcción en progreso
+    private void showConstructionInProgress(double x, double y, double width, double height,
+                                            String buildingType, String constructionId) {
+        try {
+            Image constructionImage = new Image("file:src/main/resources/images/Construccion.png");
+            ImageView constructionView = new ImageView(constructionImage);
+
+            constructionView.setFitWidth(width);
+            constructionView.setFitHeight(height);
+            constructionView.setPreserveRatio(true);
+            constructionView.setX(x);
+            constructionView.setY(y);
+            constructionView.setOpacity(0.5); // 50% de opacidad
+            constructionView.setId("construction_" + constructionId);
+
+            // Animación de pulsación para indicar construcción activa
+            FadeTransition pulse = new FadeTransition(Duration.seconds(1.5), constructionView);
+            pulse.setFromValue(0.4);
+            pulse.setToValue(0.6);
+            pulse.setCycleCount(Timeline.INDEFINITE);
+            pulse.setAutoReverse(true);
+            pulse.play();
+
+            // Añadir sombra
+            DropShadow shadow = new DropShadow();
+            shadow.setColor(Color.rgb(139, 69, 19, 0.5)); // Color marrón para construcción
+            shadow.setRadius(10);
+            shadow.setSpread(0.1);
+            constructionView.setEffect(shadow);
+
+            // Guardar referencia
+            constructionVisuals.put(constructionId, constructionView);
+            buildingTypesUnderConstruction.put(constructionId, buildingType);
+
+            // Añadir a la escena
+            root.getChildren().add(constructionView);
+
+            // Crear barra de progreso
+            createProgressBarForConstruction(constructionView, 0.0);
+
+            System.out.println("🚧 Mostrando construcción en progreso para: " + buildingType +
+                    " en: (" + (int)x + ", " + (int)y + ") ID: " + constructionId);
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al mostrar construcción en progreso: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    // Método para reemplazar construcción con edificio final
+    private void replaceConstructionWithBuilding(ImageView constructionView, String buildingType, String constructionId) {
+        try {
+            double x = constructionView.getX();
+            double y = constructionView.getY();
+            double width = constructionView.getFitWidth();
+            double height = constructionView.getFitHeight();
+
+            // Detener animación de pulsación
+            constructionView.setOpacity(1.0);
+            FadeTransition fadeOut = new FadeTransition(Duration.millis(500), constructionView);
+            fadeOut.setToValue(0);
+
+            fadeOut.setOnFinished(e -> {
+                // Remover la construcción
+                root.getChildren().remove(constructionView);
+
+                // Crear el edificio final
+                createFinalBuilding(x, y, width, height, buildingType);
+
+                System.out.println("✅ Construcción completada: " + buildingType);
+            });
+
+            fadeOut.play();
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al reemplazar construcción: " + e.getMessage());
+        }
+    }
+
+    private void createFinalBuilding(double x, double y, double width, double height, String buildingType) {
+        try {
+            String imagePath = "file:src/main/resources/images/" + buildingType + ".png";
+            System.out.println("🖼️ Cargando imagen: " + imagePath);
+
+            Image buildingImage = new Image(imagePath);
+
+            ImageView buildingView = new ImageView(buildingImage);
+            buildingView.setFitWidth(width);
+            buildingView.setFitHeight(height);
+            buildingView.setPreserveRatio(true);
+            buildingView.setX(x);
+            buildingView.setY(y);
+            buildingView.setOpacity(0); // Comienza transparente
+
+            // Marcar como cuartel si es el caso
+            if (buildingType.equalsIgnoreCase("Cuartel")) {
+                buildingView.setId("Cuartel_" + System.currentTimeMillis());
+            }
+
+            DropShadow shadow = new DropShadow();
+            shadow.setColor(Color.rgb(0, 0, 0, 0.5));
+            shadow.setRadius(10);
+            shadow.setSpread(0.1);
+            buildingView.setEffect(shadow);
+
+            // Animación de aparición
+            FadeTransition fade = new FadeTransition(Duration.millis(800), buildingView);
+            fade.setFromValue(0.0);
+            fade.setToValue(1.0);
+
+            ScaleTransition scale = new ScaleTransition(Duration.millis(800), buildingView);
+            scale.setFromX(0.8);
+            scale.setFromY(0.8);
+            scale.setToX(1.0);
+            scale.setToY(1.0);
+
+            // Efecto de brillo al completarse
+            DropShadow glow = new DropShadow();
+            glow.setColor(Color.rgb(255, 215, 0, 0.8));
+            glow.setRadius(20);
+
+            Timeline glowTimeline = new Timeline(
+                    new KeyFrame(Duration.millis(0), e -> buildingView.setEffect(glow)),
+                    new KeyFrame(Duration.millis(1000), e -> buildingView.setEffect(shadow))
+            );
+
+            javafx.animation.ParallelTransition parallel =
+                    new javafx.animation.ParallelTransition(fade, scale);
+            parallel.setOnFinished(e -> {
+                glowTimeline.play();
+                System.out.println("✨ Edificio final creado: " + buildingType);
+            });
+
+            root.getChildren().add(buildingView);
+            placedBuildings.add(buildingView);
+            makeBuildingInteractive(buildingView, buildingType);
+
+            parallel.play();
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al crear edificio final: " + e.getMessage());
+            e.printStackTrace();
+            // Crear placeholder si falla
+            createPlaceholderBuilding(x, y, width, height, buildingType);
+        }
+    }
+
+    private void createPlaceholderBuilding(double x, double y, double width, double height, String buildingType) {
+        Rectangle placeholder = new Rectangle(width, height);
+        placeholder.setX(x);
+        placeholder.setY(y);
+
+        if (buildingType.equalsIgnoreCase("Cuartel")) {
+            placeholder.setFill(Color.rgb(139, 0, 0, 0.8)); // Rojo oscuro para cuartel
+        } else {
+            placeholder.setFill(Color.rgb(139, 69, 19, 0.8)); // Marrón para casa
+        }
+
+        placeholder.setStroke(Color.GOLD);
+        placeholder.setStrokeWidth(2);
+
+        Label label = new Label(buildingType);
+        label.setLayoutX(x + width/2 - 30);
+        label.setLayoutY(y + height/2 - 10);
+        label.setTextFill(Color.WHITE);
+        label.setFont(javafx.scene.text.Font.font("Arial", 12));
+
+        Pane placeholderPane = new Pane(placeholder, label);
+        root.getChildren().add(placeholderPane);
+        System.out.println("⚠️ Placeholder creado para: " + buildingType);
+    }
+
+
+
     // ==================== SISTEMA DE PAUSA ====================
 
     /**
@@ -397,7 +1137,11 @@ public class GameApp extends Application {
                 isGamePaused = false;
                 disableGameInteractions(false);
 
-                // NUEVO: No necesitamos reanudar aquí porque ya se hizo con el botón
+                // Reanudar construcciones
+                if (constructionUpdateTimeline != null) {
+                    constructionUpdateTimeline.play();
+                }
+
                 System.out.println("▶ Juego reanudado");
             });
 
@@ -411,60 +1155,16 @@ public class GameApp extends Application {
             pauseOverlay = null;
             isGamePaused = false;
             disableGameInteractions(false);
+
+            // Reanudar construcciones
+            if (constructionUpdateTimeline != null) {
+                constructionUpdateTimeline.play();
+            }
+
             System.out.println("▶ Juego reanudado");
         }
     }
 
-    /**
-     * Habilita/deshabilita la interacción con elementos del juego
-     */
-    private void disableGameInteractions(boolean disable) {
-        if (disable) {
-            // Deshabilitar TODOS los elementos del root excepto el overlay de pausa
-            for (int i = 0; i < root.getChildren().size(); i++) {
-                Node node = root.getChildren().get(i);
-                if (node != pauseOverlay && node != buildingGhost) {
-                    node.setMouseTransparent(true);
-                    node.setFocusTraversable(false);
-                }
-            }
-
-            // Asegurar que el overlay de pausa sea interactivo
-            if (pauseOverlay != null) {
-                pauseOverlay.setMouseTransparent(false);
-                pauseOverlay.setFocusTraversable(true);
-            }
-
-            // Deshabilitar modo construcción si está activo
-            if (isBuildingMode) {
-                cancelBuildingMode();
-            }
-
-            // Deshabilitar eventos del mouse en la escena
-            if (root.getScene() != null) {
-                root.getScene().setOnMouseMoved(null);
-                root.getScene().setOnMouseClicked(null);
-                root.getScene().setOnMousePressed(null);
-                root.setCursor(javafx.scene.Cursor.DEFAULT);
-            }
-
-            // Asegurar que el overlay esté al frente
-            if (pauseOverlay != null) {
-                pauseOverlay.toFront();
-            }
-        } else {
-            // Rehabilitar todos los elementos
-            for (Node node : root.getChildren()) {
-                node.setMouseTransparent(false);
-                node.setFocusTraversable(true);
-            }
-
-            // Rehabilitar eventos del mouse
-            if (root.getScene() != null) {
-                setupBuildingListeners(root.getScene());
-            }
-        }
-    }
 
     // ==================== PANEL SUPERIOR CON TIMER INTEGRADO ====================
 
@@ -1022,7 +1722,7 @@ public class GameApp extends Application {
         double posX = x - buildingWidth / 2;
         double posY = y - buildingHeight / 2;
 
-        // Verificar colisión con márgenes reducidos
+        // Verificar colisión
         if (checkCollisionWithReducedMargin(posX, posY, buildingWidth, buildingHeight, 3)) {
             System.out.println("❌ No se puede construir aquí - Colisión detectada");
             showCollisionFeedback();
@@ -1038,77 +1738,147 @@ public class GameApp extends Application {
         }
 
         boolean creado = false;
+        String buildingTypeForBackend = "";
 
-        if(currentBuildingType.equalsIgnoreCase("Casa")){
+        // Determinar el tipo de construcción para el backend
+        if (currentBuildingType.equalsIgnoreCase("Casa")) {
+            buildingTypeForBackend = "HOUSE";
             creado = territory1.getTownHall().createHouse();
-        } else if(currentBuildingType.equalsIgnoreCase("Cuartel")){
-
-            //Crear cuarte en la base de datos
+        } else if (currentBuildingType.equalsIgnoreCase("Cuartel")) {
+            buildingTypeForBackend = "MILITARY_BASE";
             creado = territory1.getTownHall().createMilitaryBase();
-            territory1.getTownHall().processConstructionQueue();
-            System.out.println("El territorio tiene: "+ territory1.getTownHall().getMilitaryBases().size()+ "military Bases");
-            //Aqui
-
         }
 
-        if (!creado) {
-            System.out.println("❌ Error: No se pudo crear el edificio en el backend");
-            cancelBuildingMode();
-            return;
+        // Si se crea una construcción exitosamente, asegurar que el Timeline esté corriendo
+        if (creado) {
+            restartConstructionUpdateLoopIfNeeded();
+            System.out.println("▶️ Nueva construcción iniciada - Reactivando sincronización");
         }
 
-        // ACTUALIZAR RECURSOS DESPUÉS DE CONSTRUIR
-        updateResourceDisplay();
+        // Obtener TODAS las órdenes de construcción
+        Deque<ConstructionOrder> queue = territory1.getTownHall().getConstructionQueue();
+        System.out.println("📊 Total órdenes en cola después de crear: " + queue.size());
 
-        try {
-            String imagePath = "file:src/main/resources/images/" + currentBuildingType + ".png";
-            Image buildingImage = new Image(imagePath);
+        ConstructionOrder newOrder = null;
 
-            ImageView buildingView = new ImageView(buildingImage);
-            buildingView.setFitWidth(buildingWidth);
-            buildingView.setFitHeight(buildingHeight);
-            buildingView.setPreserveRatio(true);
-            buildingView.setX(posX);
-            buildingView.setY(posY);
-
-            // Marcar como cuartel si es el caso
-            if (currentBuildingType.equalsIgnoreCase("Cuartel")) {
-                buildingView.setId("Cuartel_" + System.currentTimeMillis());
-                System.out.println("⚔️ Cuartel creado y marcado con ID: " + buildingView.getId());
+        // Buscar la última orden (más reciente)
+        if (!queue.isEmpty()) {
+            // Usar iterator para encontrar la última
+            Iterator<ConstructionOrder> iterator = queue.iterator();
+            while (iterator.hasNext()) {
+                newOrder = iterator.next();
             }
 
-            DropShadow shadow = new DropShadow();
-            shadow.setColor(Color.rgb(0, 0, 0, 0.5));
-            shadow.setRadius(10);
-            shadow.setSpread(0.1);
-            buildingView.setEffect(shadow);
+            if (newOrder != null) {
+                String buildingId = newOrder.getBuildingId();
 
-            FadeTransition fade = new FadeTransition(Duration.millis(500), buildingView);
-            fade.setFromValue(0.0);
-            fade.setToValue(1.0);
+                // Guardar posición
+                buildingPositions.put(buildingId, new Position(posX, posY));
 
-            ScaleTransition scale = new ScaleTransition(Duration.millis(500), buildingView);
-            scale.setFromX(0.5);
-            scale.setFromY(0.5);
-            scale.setToX(1.0);
-            scale.setToY(1.0);
+                System.out.println("📍 Posición guardada para construcción ID: " + buildingId);
 
-            javafx.animation.ParallelTransition parallel =
-                    new javafx.animation.ParallelTransition(fade, scale);
-            parallel.play();
+                // Mostrar construcción inmediatamente
+                showConstructionInProgress(posX, posY, buildingWidth, buildingHeight,
+                        currentBuildingType, buildingId);
 
-            root.getChildren().add(buildingView);
-            placedBuildings.add(buildingView);
-            makeBuildingInteractive(buildingView, currentBuildingType);
+                buildingTypesUnderConstruction.put(buildingId, currentBuildingType);
 
-            System.out.println("✅ " + currentBuildingType + " construido en: (" + (int)posX + ", " + (int)posY + ")");
-            cancelBuildingMode();
+                System.out.println("🚧 Construcción iniciada: " + currentBuildingType +
+                        " - ID: " + buildingId +
+                        " - Posición: (" + (int)posX + ", " + (int)posY + ")");
+            }
+        } else {
+            // Si no hay órdenes, usar temporal
+            String tempId = "temp_" + System.currentTimeMillis();
+            buildingPositions.put(tempId, new Position(posX, posY));
+            buildingTypesUnderConstruction.put(tempId, currentBuildingType);
 
-        } catch (Exception e) {
-            System.err.println("❌ Error al colocar edificio visualmente: " + e.getMessage());
-            cancelBuildingMode();
+            showConstructionInProgress(posX, posY, buildingWidth, buildingHeight,
+                    currentBuildingType, tempId);
+
+            System.out.println("⚠️ Construcción temporal iniciada: " + currentBuildingType);
+        }
+
+        // ACTUALIZAR RECURSOS
+        updateResourceDisplay();
+
+        cancelBuildingMode();
+    }
+
+    /**
+     * Habilita/deshabilita la interacción con elementos del juego
+     */
+    private void disableGameInteractions(boolean disable) {
+        if (disable) {
+            // Deshabilitar TODOS los elementos del root excepto el overlay de pausa
+            for (int i = 0; i < root.getChildren().size(); i++) {
+                Node node = root.getChildren().get(i);
+                if (node != pauseOverlay && node != buildingGhost) {
+                    node.setMouseTransparent(true);
+                    node.setFocusTraversable(false);
+                }
+            }
+
+            // Pausar la línea de tiempo de construcciones
+            if (constructionUpdateTimeline != null) {
+                constructionUpdateTimeline.pause();
+            }
+
+            // Asegurar que el overlay de pausa sea interactivo
+            if (pauseOverlay != null) {
+                pauseOverlay.setMouseTransparent(false);
+                pauseOverlay.setFocusTraversable(true);
+            }
+
+            // Deshabilitar modo construcción si está activo
+            if (isBuildingMode) {
+                cancelBuildingMode();
+            }
+
+            // Deshabilitar eventos del mouse en la escena
+            if (root.getScene() != null) {
+                root.getScene().setOnMouseMoved(null);
+                root.getScene().setOnMouseClicked(null);
+                root.getScene().setOnMousePressed(null);
+                root.setCursor(javafx.scene.Cursor.DEFAULT);
+            }
+
+            // Asegurar que el overlay esté al frente
+            if (pauseOverlay != null) {
+                pauseOverlay.toFront();
+            }
+        } else {
+            // Rehabilitar todos los elementos
+            for (Node node : root.getChildren()) {
+                node.setMouseTransparent(false);
+                node.setFocusTraversable(true);
+            }
+
+            // Reanudar la línea de tiempo de construcciones
+            if (constructionUpdateTimeline != null) {
+                constructionUpdateTimeline.play();
+            }
+
+            // Rehabilitar eventos del mouse
+            if (root.getScene() != null) {
+                setupBuildingListeners(root.getScene());
+            }
         }
     }
+
+    /**
+     * Limpia todas las construcciones en progreso
+     */
+    private void cleanupConstructions() {
+        if (constructionUpdateTimeline != null) {
+            constructionUpdateTimeline.stop();
+        }
+
+        constructionVisuals.clear();
+        buildingTypesUnderConstruction.clear();
+    }
+
+
 
     // ==================== UNIDADES ====================
 
