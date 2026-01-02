@@ -1,7 +1,7 @@
 package dominion.view;
 
 import com.almasb.fxgl.app.GameController;
-import javafx.animation.RotateTransition; // Añade esta línea si no existe
+import javafx.animation.RotateTransition;
 import dominion.core.GameControler;
 import dominion.core.GameMap;
 import dominion.core.GameTimer;
@@ -33,7 +33,9 @@ import javafx.stage.*;
 import javafx.util.Duration;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class GameApp extends Application {
 
@@ -55,6 +57,7 @@ public class GameApp extends Application {
     private StackPane pauseOverlay;
     private boolean isGamePaused = false;
     private Popup barracksPopup;    // Para el menú del cuartel
+    private List<ImageView> createdKnights = new ArrayList<>(); // Para rastrear caballeros creados
 
 
 
@@ -669,7 +672,6 @@ public class GameApp extends Application {
     /**
      * Método para posicionar el panel superior automáticamente
      */
-    // En el método positionTopPanel(), añade:
     private void positionTopPanel() {
         for (Node node : root.getChildren()) {
             if (node instanceof StackPane) {
@@ -728,7 +730,7 @@ public class GameApp extends Application {
             TownHall townHall1 = new TownHall("1", territory1, 100, 5);
             territory1.setTownHall(townHall1);
             territory1.getTownHall().getStoredResources().addResource(ResourceType.WOOD, 600);
-            territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, 50);
+            territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, 500);
 
             DropShadow glow = new DropShadow();
             glow.setColor(Color.rgb(255, 215, 0, 0.7));
@@ -1027,7 +1029,8 @@ public class GameApp extends Application {
         double posX = x - buildingWidth / 2;
         double posY = y - buildingHeight / 2;
 
-        if (checkCollision(posX, posY, buildingWidth, buildingHeight)) {
+        // Verificar colisión con márgenes reducidos
+        if (checkCollisionWithReducedMargin(posX, posY, buildingWidth, buildingHeight, 3)) {
             System.out.println("❌ No se puede construir aquí - Colisión detectada");
             showCollisionFeedback();
             return;
@@ -1068,6 +1071,12 @@ public class GameApp extends Application {
             buildingView.setPreserveRatio(true);
             buildingView.setX(posX);
             buildingView.setY(posY);
+
+            // Marcar como cuartel si es el caso
+            if (currentBuildingType.equalsIgnoreCase("Cuartel")) {
+                buildingView.setId("Cuartel_" + System.currentTimeMillis());
+                System.out.println("⚔️ Cuartel creado y marcado con ID: " + buildingView.getId());
+            }
 
             DropShadow shadow = new DropShadow();
             shadow.setColor(Color.rgb(0, 0, 0, 0.5));
@@ -1465,7 +1474,8 @@ public class GameApp extends Application {
                 buildingGhost.setX(x);
                 buildingGhost.setY(y);
 
-                if (checkCollision(x, y, buildingGhost.getFitWidth(), buildingGhost.getFitHeight())) {
+                // Verificar colisión con márgenes reducidos
+                if (checkCollisionWithReducedMargin(x, y, buildingGhost.getFitWidth(), buildingGhost.getFitHeight(), 3)) {
                     javafx.scene.effect.ColorAdjust redTint = new javafx.scene.effect.ColorAdjust();
                     redTint.setHue(1.0);
                     buildingGhost.setEffect(redTint);
@@ -1513,15 +1523,18 @@ public class GameApp extends Application {
         }
     }
 
-    private boolean checkCollision(double x, double y, double width, double height) {
-        Rectangle newBuildingBounds = new Rectangle(x, y, width, height);
+    /**
+     * Verifica colisión con márgenes reducidos
+     */
+    private boolean checkCollisionWithReducedMargin(double x, double y, double width, double height, double margin) {
+        Rectangle newBuildingBounds = new Rectangle(x + margin, y + margin, width - margin * 2, height - margin * 2);
 
         for (ImageView building : placedBuildings) {
             Rectangle existingBounds = new Rectangle(
-                    building.getX(),
-                    building.getY(),
-                    building.getFitWidth(),
-                    building.getFitHeight()
+                    building.getX() + margin,
+                    building.getY() + margin,
+                    building.getFitWidth() - margin * 2,
+                    building.getFitHeight() - margin * 2
             );
 
             if (newBuildingBounds.intersects(existingBounds.getBoundsInLocal())) {
@@ -1534,10 +1547,10 @@ public class GameApp extends Application {
                 ImageView existingBuilding = (ImageView) node;
                 if (!existingBuilding.equals(buildingGhost)) {
                     Rectangle existingBounds = new Rectangle(
-                            existingBuilding.getX(),
-                            existingBuilding.getY(),
-                            existingBuilding.getFitWidth(),
-                            existingBuilding.getFitHeight()
+                            existingBuilding.getX() + margin,
+                            existingBuilding.getY() + margin,
+                            existingBuilding.getFitWidth() - margin * 2,
+                            existingBuilding.getFitHeight() - margin * 2
                     );
 
                     if (newBuildingBounds.intersects(existingBounds.getBoundsInLocal())) {
@@ -1548,6 +1561,11 @@ public class GameApp extends Application {
         }
 
         return false;
+    }
+
+    private boolean checkCollision(double x, double y, double width, double height) {
+        // Usar margen reducido por defecto
+        return checkCollisionWithReducedMargin(x, y, width, height, 5);
     }
 
     private void showCollisionFeedback() {
@@ -1680,7 +1698,7 @@ public class GameApp extends Application {
                 24, unitSize);
 
         for (Position pos : positionsToTry) {
-            if (!checkCollisionForUnit(pos.x, pos.y, unitSize, unitSize, unitType) &&
+            if (!checkCollisionForUnitReduced(pos.x, pos.y, unitSize, unitSize, unitType, 2) &&
                     pos.x >= 0 && pos.y >= 0 &&
                     pos.x + unitSize <= windowWidth &&
                     pos.y + unitSize <= windowHeight) {
@@ -1706,8 +1724,12 @@ public class GameApp extends Application {
         }
     }
 
-    private boolean checkCollisionForUnit(double x, double y, double width, double height, String unitType) {
-        Rectangle newBounds = new Rectangle(x, y, width, height);
+    /**
+     * Verifica colisión para unidades con margen reducido
+     */
+    private boolean checkCollisionForUnitReduced(double x, double y, double width, double height,
+                                                 String unitType, double margin) {
+        Rectangle newBounds = new Rectangle(x + margin, y + margin, width - margin * 2, height - margin * 2);
 
         if (x < 0 || y < 0 || x + width > windowWidth || y + height > windowHeight) {
             return true;
@@ -1719,15 +1741,13 @@ public class GameApp extends Application {
 
                 if (existing.getFitWidth() == 50 && existing.getFitHeight() == 50) {
                     Rectangle existingBounds = new Rectangle(
-                            existing.getX(),
-                            existing.getY(),
-                            existing.getFitWidth(),
-                            existing.getFitHeight()
+                            existing.getX() + margin,
+                            existing.getY() + margin,
+                            existing.getFitWidth() - margin * 2,
+                            existing.getFitHeight() - margin * 2
                     );
 
                     if (newBounds.intersects(existingBounds.getBoundsInLocal())) {
-                        System.out.println("⚠️ Colisión detectada con otra unidad en: (" +
-                                (int)existing.getX() + ", " + (int)existing.getY() + ")");
                         return true;
                     }
                 }
@@ -1740,22 +1760,53 @@ public class GameApp extends Application {
 
                 if (existing.getFitWidth() >= 100 || existing.getFitHeight() >= 100) {
                     Rectangle existingBounds = new Rectangle(
-                            existing.getX(),
-                            existing.getY(),
-                            existing.getFitWidth(),
-                            existing.getFitHeight()
+                            existing.getX() + margin,
+                            existing.getY() + margin,
+                            existing.getFitWidth() - margin * 2,
+                            existing.getFitHeight() - margin * 2
                     );
 
-                    Rectangle paddedBounds = new Rectangle(
-                            existingBounds.getX() - 10,
-                            existingBounds.getY() - 10,
-                            existingBounds.getWidth() + 20,
-                            existingBounds.getHeight() + 20
+                    if (newBounds.intersects(existingBounds.getBoundsInLocal())) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Verificar colisión con árboles con margen reducido
+        for (Node node : root.getChildren()) {
+            if (node instanceof ImageView) {
+                ImageView imageView = (ImageView) node;
+
+                if (imageView.getId() != null && imageView.getId().startsWith("Arbol_")) {
+                    Rectangle treeBounds = new Rectangle(
+                            imageView.getX() + margin,
+                            imageView.getY() + margin,
+                            imageView.getFitWidth() - margin * 2,
+                            imageView.getFitHeight() - margin * 2
                     );
 
-                    if (newBounds.intersects(paddedBounds.getBoundsInLocal())) {
-                        System.out.println("⚠️ Colisión detectada con edificio en: (" +
-                                (int)existing.getX() + ", " + (int)existing.getY() + ")");
+                    if (newBounds.intersects(treeBounds.getBoundsInLocal())) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Verificar colisión con minas con margen reducido
+        for (Node node : root.getChildren()) {
+            if (node instanceof ImageView) {
+                ImageView imageView = (ImageView) node;
+
+                if (imageView.getId() != null && imageView.getId().startsWith("Mina_")) {
+                    Rectangle mineBounds = new Rectangle(
+                            imageView.getX() + margin,
+                            imageView.getY() + margin,
+                            imageView.getFitWidth() - margin * 2,
+                            imageView.getFitHeight() - margin * 2
+                    );
+
+                    if (newBounds.intersects(mineBounds.getBoundsInLocal())) {
                         return true;
                     }
                 }
@@ -1763,6 +1814,11 @@ public class GameApp extends Application {
         }
 
         return false;
+    }
+
+    private boolean checkCollisionForUnit(double x, double y, double width, double height, String unitType) {
+        // Usar margen reducido de 2px
+        return checkCollisionForUnitReduced(x, y, width, height, unitType, 2);
     }
 
     private void createUnitAtPosition(String unitType, String imageName, double x, double y, double size) {
@@ -1962,18 +2018,18 @@ public class GameApp extends Application {
             Image mineImage = new Image("file:src/main/resources/images/Mina.png");
             double mineSize = 45; // Tamaño de la mina
 
-            System.out.println("⛏ Creando 15 minas en el mapa...");
+            System.out.println("⛏ Creando 5 minas en el mapa...");
 
             int minesCreated = 0;
             int maxAttempts = 500; // Para evitar bucles infinitos
 
             // Intentar crear 15 minas
-            while (minesCreated < 7 && maxAttempts > 0) {
+            while (minesCreated < 5 && maxAttempts > 0) {
                 double x = getRandomPosition(windowWidth, mineSize);
                 double y = getRandomPosition(windowHeight, mineSize);
 
-                // Verificar que no colisione con nada
-                if (!checkMineCollision(x, y, mineSize)) {
+                // Verificar que no colisione con nada (con margen reducido)
+                if (!checkMineCollisionReduced(x, y, mineSize, 3)) {
                     createMine(mineImage, mineSize, x, y, minesCreated);
                     minesCreated++;
                 }
@@ -2002,19 +2058,19 @@ public class GameApp extends Application {
     }
 
     /**
-     * Verifica colisiones para una mina
+     * Verifica colisiones para una mina con margen reducido
      */
-    private boolean checkMineCollision(double x, double y, double size) {
-        // Crear el área de la mina con un pequeño margen de seguridad
-        Rectangle mineBounds = new Rectangle(x - 5, y - 5, size + 10, size + 10);
+    private boolean checkMineCollisionReduced(double x, double y, double size, double margin) {
+        // Crear el área de la mina con margen reducido
+        Rectangle mineBounds = new Rectangle(x + margin, y + margin, size - margin * 2, size - margin * 2);
 
         // Verificar colisión con edificios existentes
         for (ImageView building : placedBuildings) {
             Rectangle buildingBounds = new Rectangle(
-                    building.getX(),
-                    building.getY(),
-                    building.getFitWidth(),
-                    building.getFitHeight()
+                    building.getX() + margin,
+                    building.getY() + margin,
+                    building.getFitWidth() - margin * 2,
+                    building.getFitHeight() - margin * 2
             );
 
             if (mineBounds.intersects(buildingBounds.getBoundsInLocal())) {
@@ -2022,52 +2078,44 @@ public class GameApp extends Application {
             }
         }
 
-        // Verificar colisión con TownHall (si está en placedBuildings, sino verificar manualmente)
+        // Verificar colisión con TownHall
         double townHallX = windowWidth * 0.3 + 100;
         double townHallY = windowHeight * 0.4 + 100;
         double townHallSize = 170;
 
         Rectangle townHallBounds = new Rectangle(
-                townHallX,
-                townHallY,
-                townHallSize,
-                townHallSize
+                townHallX + margin,
+                townHallY + margin,
+                townHallSize - margin * 2,
+                townHallSize - margin * 2
         );
 
         if (mineBounds.intersects(townHallBounds.getBoundsInLocal())) {
             return true;
         }
 
-        // Verificar colisión con árboles (buscar todos los ImageView que sean árboles)
+        // Verificar colisión con árboles
         for (Node node : root.getChildren()) {
             if (node instanceof ImageView) {
                 ImageView imageView = (ImageView) node;
 
-                // Si es un árbol (identificado por ID o tamaño)
+                // Si es un árbol
                 if (imageView.getId() != null && imageView.getId().startsWith("Arbol_")) {
                     Rectangle treeBounds = new Rectangle(
-                            imageView.getX(),
-                            imageView.getY(),
-                            imageView.getFitWidth(),
-                            imageView.getFitHeight()
+                            imageView.getX() + margin,
+                            imageView.getY() + margin,
+                            imageView.getFitWidth() - margin * 2,
+                            imageView.getFitHeight() - margin * 2
                     );
 
-                    // Área de colisión ligeramente mayor para árboles
-                    Rectangle paddedTreeBounds = new Rectangle(
-                            treeBounds.getX() - 10,
-                            treeBounds.getY() - 10,
-                            treeBounds.getWidth() + 20,
-                            treeBounds.getHeight() + 20
-                    );
-
-                    if (mineBounds.intersects(paddedTreeBounds.getBoundsInLocal())) {
+                    if (mineBounds.intersects(treeBounds.getBoundsInLocal())) {
                         return true;
                     }
                 }
             }
         }
 
-        // Verificar colisión con unidades (mineros y leñadores)
+        // Verificar colisión con unidades
         for (Node node : root.getChildren()) {
             if (node instanceof ImageView) {
                 ImageView imageView = (ImageView) node;
@@ -2077,24 +2125,16 @@ public class GameApp extends Application {
                     if (imageView.getId() != null &&
                             (imageView.getId().startsWith("minero_") ||
                                     imageView.getId().startsWith("leñador_") ||
-                                    imageView.getId().startsWith("unidad_"))) {
+                                    imageView.getId().startsWith("caballero_"))) {
 
                         Rectangle unitBounds = new Rectangle(
-                                imageView.getX(),
-                                imageView.getY(),
-                                imageView.getFitWidth(),
-                                imageView.getFitHeight()
+                                imageView.getX() + margin,
+                                imageView.getY() + margin,
+                                imageView.getFitWidth() - margin * 2,
+                                imageView.getFitHeight() - margin * 2
                         );
 
-                        // Área de colisión mayor para unidades (evitar minas muy cerca)
-                        Rectangle paddedUnitBounds = new Rectangle(
-                                unitBounds.getX() - 15,
-                                unitBounds.getY() - 15,
-                                unitBounds.getWidth() + 30,
-                                unitBounds.getHeight() + 30
-                        );
-
-                        if (mineBounds.intersects(paddedUnitBounds.getBoundsInLocal())) {
+                        if (mineBounds.intersects(unitBounds.getBoundsInLocal())) {
                             return true;
                         }
                     }
@@ -2107,24 +2147,16 @@ public class GameApp extends Application {
             if (node instanceof ImageView) {
                 ImageView imageView = (ImageView) node;
 
-                // Si es una mina (identificada por ID)
+                // Si es una mina
                 if (imageView.getId() != null && imageView.getId().startsWith("Mina_")) {
                     Rectangle otherMineBounds = new Rectangle(
-                            imageView.getX(),
-                            imageView.getY(),
-                            imageView.getFitWidth(),
-                            imageView.getFitHeight()
+                            imageView.getX() + margin,
+                            imageView.getY() + margin,
+                            imageView.getFitWidth() - margin * 2,
+                            imageView.getFitHeight() - margin * 2
                     );
 
-                    // Evitar que las minas estén muy juntas
-                    Rectangle paddedMineBounds = new Rectangle(
-                            otherMineBounds.getX() - 30,
-                            otherMineBounds.getY() - 30,
-                            otherMineBounds.getWidth() + 60,
-                            otherMineBounds.getHeight() + 60
-                    );
-
-                    if (mineBounds.intersects(paddedMineBounds.getBoundsInLocal())) {
+                    if (mineBounds.intersects(otherMineBounds.getBoundsInLocal())) {
                         return true;
                     }
                 }
@@ -2139,6 +2171,11 @@ public class GameApp extends Application {
         }
 
         return false;
+    }
+
+    private boolean checkMineCollision(double x, double y, double size) {
+        // Usar margen reducido de 3px
+        return checkMineCollisionReduced(x, y, size, 3);
     }
 
     /**
@@ -2335,6 +2372,9 @@ public class GameApp extends Application {
 
         root.getChildren().add(mine);
     }
+
+    // ==================== SISTEMA DE CUARTEL Y CABALLEROS ====================
+
     /**
      * Muestra el menú del Cuartel
      */
@@ -2415,7 +2455,7 @@ public class GameApp extends Application {
         knightButton.setOnAction(e -> {
             System.out.println("♞ Creando Caballero...");
             barracksPopup.hide();
-            createKnightUnit();
+            createKnightUnit(barracksPopup);
         });
 
         buttonContainer.getChildren().addAll(knightButton);
@@ -2535,62 +2575,73 @@ public class GameApp extends Application {
     }
 
     /**
-     * Crea una unidad de caballero
+     * Crea una unidad de caballero (versión optimizada)
      */
-    private void createKnightUnit() {
+    private void createKnightUnit(Popup barracksPopup) {
         try {
-            // Verificar recursos
+            // Verificar recursos usando el método spend existente
             if (territory1 != null && territory1.getTownHall() != null) {
-                int gold = territory1.getTownHall().getStoredResources().getAmount(ResourceType.GOLD);
+                // Crear mapa de costos
+                Map<ResourceType, Integer> knightCost = new HashMap<>();
+                knightCost.put(ResourceType.GOLD, 50);
 
-                if (gold >= 50) {
-                    // Restar recursos
-                    territory1.getTownHall().getStoredResources().removeResource(ResourceType.GOLD, 600);
+                // Verificar si puede pagar
+                if (territory1.getTownHall().getStoredResources().canAfford(knightCost)) {
+                    // Restar recursos usando el método spend existente
+                    territory1.getTownHall().getStoredResources().spend(knightCost);
+                    System.out.println("✅ Recursos descontados exitosamente");
 
                     // Actualizar display de recursos
                     updateResourceDisplay();
 
-                    // Encontrar un cuartel para crear el caballero cerca
+                    // Encontrar el cuartel más cercano
                     ImageView nearestBarracks = findNearestBarracks();
                     if (nearestBarracks != null) {
-                        createUnitNextToBarracks(nearestBarracks, "caballero", "caballero.png", 60);
-                        System.out.println("♞ Caballero creado exitosamente!");
+                        // Crear caballero cerca del cuartel
+                        if (createKnightNextToBarracks(nearestBarracks)) {
+                            System.out.println("♞ Caballero creado exitosamente!");
+                        } else {
+                            System.out.println("⚠️ No se pudo crear el caballero cerca del cuartel");
+                            // Devolver los recursos si no se pudo crear
+                            territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, 50);
+                            updateResourceDisplay();
+                        }
                     } else {
                         System.out.println("⚠️ No se encontró un cuartel para crear el caballero");
+                        // Devolver los recursos
+                        territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, 50);
+                        updateResourceDisplay();
                     }
                 } else {
+                    System.out.println("❌ Recursos insuficientes para crear caballero");
                     showInsufficientResourcesForKnight();
                 }
             }
         } catch (Exception e) {
             System.err.println("❌ Error al crear caballero: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
     /**
-     * Encuentra el cuartel más cercano al cursor/clic
+     * Encuentra el cuartel más cercano
      */
     private ImageView findNearestBarracks() {
         ImageView nearestBarracks = null;
         double minDistance = Double.MAX_VALUE;
 
-        // Buscar entre todos los edificios colocados
-        for (ImageView building : placedBuildings) {
-            // Verificar si es un cuartel por tamaño (170x170) y por posición (no es el TownHall)
-            if (building.getFitWidth() == 170 && building.getFitHeight() == 170) {
-                // El TownHall está en una posición específica, verificar que no sea ese
-                double townHallX = windowWidth * 0.3 + 100;
-                double townHallY = windowHeight * 0.4 + 100;
-                double buildingX = building.getX();
-                double buildingY = building.getY();
+        // Buscar entre todos los nodos del root
+        for (Node node : root.getChildren()) {
+            if (node instanceof ImageView) {
+                ImageView imageView = (ImageView) node;
 
-                // Si no está en la posición del TownHall, es un cuartel
-                if (Math.abs(buildingX - townHallX) > 50 || Math.abs(buildingY - townHallY) > 50) {
+                // Verificar si es un cuartel por ID
+                if (imageView.getId() != null && imageView.getId().startsWith("Cuartel_")) {
                     // Calcular distancia desde el centro de la pantalla
                     double centerX = windowWidth / 2;
                     double centerY = windowHeight / 2;
-                    double buildingCenterX = buildingX + building.getFitWidth() / 2;
-                    double buildingCenterY = buildingY + building.getFitHeight() / 2;
+                    double buildingCenterX = imageView.getX() + imageView.getFitWidth() / 2;
+                    double buildingCenterY = imageView.getY() + imageView.getFitHeight() / 2;
 
                     double distance = Math.sqrt(
                             Math.pow(buildingCenterX - centerX, 2) +
@@ -2599,7 +2650,7 @@ public class GameApp extends Application {
 
                     if (distance < minDistance) {
                         minDistance = distance;
-                        nearestBarracks = building;
+                        nearestBarracks = imageView;
                     }
                 }
             }
@@ -2617,166 +2668,121 @@ public class GameApp extends Application {
     }
 
     /**
-     * Crea un caballero cerca de un cuartel específico
+     * Crea un caballero cerca de un cuartel específico (versión optimizada)
      */
-    private void createUnitNextToBarracks(ImageView barracksView, String unitType, String imageName, double unitSize) {
+    private boolean createKnightNextToBarracks(ImageView barracksView) {
         try {
             if (barracksView == null) {
                 System.out.println("❌ No hay cuartel para crear unidades");
-                return;
+                return false;
             }
 
             double barracksX = barracksView.getX();
             double barracksY = barracksView.getY();
-            double barracksSize = barracksView.getFitWidth();
-            double spacing = 15; // Más espacio para caballeros
+            double barracksWidth = barracksView.getFitWidth();
+            double barracksHeight = barracksView.getFitHeight();
+            double knightSize = 50;
 
             System.out.println("🔍 Buscando posición para caballero cerca del cuartel...");
-            System.out.println("📍 Cuartel en: (" + (int)barracksX + ", " + (int)barracksY + ")");
 
-            // Buscar posición específica para caballero
-            Position validPosition = findPositionForKnight(barracksX, barracksY, barracksSize, unitSize, spacing);
-
-            if (validPosition == null) {
-                System.out.println("❌ No hay espacio disponible cerca del cuartel para el " + unitType);
-                // Intentar buscar más lejos
-                validPosition = findPositionForUnitFar(barracksX, barracksY, barracksSize, unitSize, spacing);
-            }
+            // Intentar posiciones en una formación compacta
+            Position validPosition = findPositionForKnightCompact(barracksX, barracksY,
+                    barracksWidth, barracksHeight,
+                    knightSize);
 
             if (validPosition != null) {
-                createKnightAtPosition(unitType, imageName, validPosition.x, validPosition.y, 50);
+                createKnightAtPosition("caballero", "caballero.png", validPosition.x, validPosition.y, knightSize);
+                return true;
             } else {
                 System.out.println("❌ No se pudo encontrar espacio para el caballero");
-                showNoSpaceForKnight();
+                return false;
             }
 
         } catch (Exception e) {
-            System.err.println("❌ Error al crear " + unitType + ": " + e.getMessage());
+            System.err.println("❌ Error al crear caballero: " + e.getMessage());
             e.printStackTrace();
+            return false;
         }
     }
 
     /**
-     * Busca posición específica para caballero cerca del cuartel
+     * Busca posición compacta para caballero (uno al lado del otro)
      */
-    private Position findPositionForKnight(double barracksX, double barracksY, double barracksSize,
-                                           double unitSize, double spacing) {
-        System.out.println("🔍 Buscando posición óptima para caballero...");
-
-        // Lista de posiciones preferenciales alrededor del cuartel
-        List<Position> preferredPositions = new ArrayList<>();
+    private Position findPositionForKnightCompact(double barracksX, double barracksY,
+                                                  double barracksWidth, double barracksHeight,
+                                                  double knightSize) {
+        System.out.println("🔍 Buscando posición compacta para caballero...");
 
         // Calcular centro del cuartel
-        double centerX = barracksX + barracksSize / 2;
-        double centerY = barracksY + barracksSize / 2;
+        double centerX = barracksX + barracksWidth / 2;
+        double centerY = barracksY + barracksHeight / 2;
 
-        // Distancia para posicionar caballeros (más lejos que mineros/leñadores)
-        double distance = barracksSize + unitSize * 2 + spacing * 2;
+        // Distancia desde el cuartel para crear caballeros
+        double distanceFromBarracks = barracksWidth / 2 + knightSize + 5; // Solo 5px de separación
 
-        // 8 posiciones alrededor del cuartel (como puntos cardinales)
-        for (int i = 0; i < 8; i++) {
-            double angle = 2 * Math.PI * i / 8;
-            double x = centerX + Math.cos(angle) * distance - unitSize / 2;
-            double y = centerY + Math.sin(angle) * distance - unitSize / 2;
-            preferredPositions.add(new Position(x, y));
-        }
+        // Direcciones para posicionar caballeros (formación compacta)
+        double[][] directions = {
+                {1, 0},   // Derecha
+                {-1, 0},  // Izquierda
+                {0, 1},   // Abajo
+                {0, -1},  // Arriba
+                {1, 1},   // Diagonal inferior derecha
+                {-1, 1},  // Diagonal inferior izquierda
+                {1, -1},  // Diagonal superior derecha
+                {-1, -1}  // Diagonal superior izquierda
+        };
 
-        // Posiciones adicionales más cercanas (4 puntos intermedios)
-        double closerDistance = barracksSize + unitSize + spacing;
-        for (int i = 0; i < 4; i++) {
-            double angle = 2 * Math.PI * i / 4 + Math.PI / 4; // Desplazado 45 grados
-            double x = centerX + Math.cos(angle) * closerDistance - unitSize / 2;
-            double y = centerY + Math.sin(angle) * closerDistance - unitSize / 2;
-            preferredPositions.add(new Position(x, y));
-        }
+        // Primero intentar cerca de otros caballeros existentes
+        if (!createdKnights.isEmpty()) {
+            ImageView lastKnight = createdKnights.get(createdKnights.size() - 1);
+            double lastX = lastKnight.getX();
+            double lastY = lastKnight.getY();
 
-        // Intentar posiciones preferenciales primero
-        for (Position pos : preferredPositions) {
-            if (!checkCollisionForKnight(pos.x, pos.y, unitSize, unitSize) &&
-                    pos.x >= 0 && pos.y >= 0 &&
-                    pos.x + unitSize <= windowWidth &&
-                    pos.y + unitSize <= windowHeight) {
+            // Intentar posiciones alrededor del último caballero creado
+            for (double[] dir : directions) {
+                double x = lastX + dir[0] * (knightSize + 3); // Solo 3px de separación entre caballeros
+                double y = lastY + dir[1] * (knightSize + 3);
 
-                System.out.println("✅ Posición preferencial encontrada para caballero en: (" +
-                        (int)pos.x + ", " + (int)pos.y + ")");
-                return pos;
+                // Verificar que esté dentro de los límites
+                if (x >= 0 && y >= 0 && x + knightSize <= windowWidth && y + knightSize <= windowHeight) {
+                    // Verificar colisión con margen mínimo
+                    if (!checkCollisionForKnightReduced(x, y, knightSize, knightSize, 2)) {
+                        System.out.println("✅ Posición encontrada junto a otro caballero");
+                        return new Position(x, y);
+                    }
+                }
             }
         }
 
-        // Si no encuentra en posiciones preferenciales, buscar más posiciones
-        return findMorePositionsForKnight(barracksX, barracksY, barracksSize, unitSize, spacing);
-    }
+        // Si no hay otros caballeros o no hay espacio, intentar alrededor del cuartel
+        for (double[] dir : directions) {
+            double x = centerX + dir[0] * distanceFromBarracks - knightSize / 2;
+            double y = centerY + dir[1] * distanceFromBarracks - knightSize / 2;
 
-    /**
-     * Busca más posiciones para caballero
-     */
-    private Position findMorePositionsForKnight(double barracksX, double barracksY, double barracksSize,
-                                                double unitSize, double spacing) {
-        System.out.println("🔍 Buscando más posiciones para caballero...");
+            // Ajustar a límites
+            x = Math.max(10, Math.min(x, windowWidth - knightSize - 10));
+            y = Math.max(10, Math.min(y, windowHeight - knightSize - 10));
 
-        List<Position> morePositions = new ArrayList<>();
-        double centerX = barracksX + barracksSize / 2;
-        double centerY = barracksY + barracksSize / 2;
-
-        // Crear círculos concéntricos de posiciones
-        for (double radius = barracksSize + unitSize + spacing;
-             radius <= barracksSize + unitSize * 5;
-             radius += unitSize + spacing) {
-
-            // Más puntos en círculos más grandes
-            int points = (int)(radius / 20) + 8;
-            points = Math.min(points, 24); // Máximo 24 puntos por círculo
-
-            for (int i = 0; i < points; i++) {
-                double angle = 2 * Math.PI * i / points;
-                double x = centerX + Math.cos(angle) * radius - unitSize / 2;
-                double y = centerY + Math.sin(angle) * radius - unitSize / 2;
-                morePositions.add(new Position(x, y));
+            if (!checkCollisionForKnightReduced(x, y, knightSize, knightSize, 2)) {
+                System.out.println("✅ Posición encontrada alrededor del cuartel");
+                return new Position(x, y);
             }
         }
 
-        // Intentar todas las posiciones
-        for (Position pos : morePositions) {
-            if (!checkCollisionForKnight(pos.x, pos.y, unitSize, unitSize) &&
-                    pos.x >= 0 && pos.y >= 0 &&
-                    pos.x + unitSize <= windowWidth &&
-                    pos.y + unitSize <= windowHeight) {
+        // Si no hay espacio inmediato, buscar un poco más lejos
+        for (int ring = 1; ring <= 3; ring++) {
+            double currentDistance = distanceFromBarracks + knightSize * ring;
 
-                System.out.println("✅ Posición encontrada para caballero en radio " +
-                        (int)Math.sqrt(Math.pow(pos.x - centerX, 2) + Math.pow(pos.y - centerY, 2)) + "px");
-                return pos;
-            }
-        }
+            for (int i = 0; i < 8; i++) {
+                double angle = 2 * Math.PI * i / 8;
+                double x = centerX + Math.cos(angle) * currentDistance - knightSize / 2;
+                double y = centerY + Math.sin(angle) * currentDistance - knightSize / 2;
 
-        return null;
-    }
+                x = Math.max(10, Math.min(x, windowWidth - knightSize - 10));
+                y = Math.max(10, Math.min(y, windowHeight - knightSize - 10));
 
-    /**
-     * Busca posición más lejana si no hay cerca
-     */
-    private Position findPositionForUnitFar(double barracksX, double barracksY, double barracksSize,
-                                            double unitSize, double spacing) {
-        System.out.println("🔍 Buscando posición lejana para caballero...");
-
-        double centerX = barracksX + barracksSize / 2;
-        double centerY = barracksY + barracksSize / 2;
-
-        // Intentar en anillos cada vez más lejanos
-        for (int ring = 1; ring <= 10; ring++) {
-            double radius = barracksSize + unitSize * (3 + ring) + spacing * ring;
-            int points = 12 + ring * 2; // Más puntos en anillos más grandes
-
-            for (int i = 0; i < points; i++) {
-                double angle = 2 * Math.PI * i / points;
-                double x = centerX + Math.cos(angle) * radius - unitSize / 2;
-                double y = centerY + Math.sin(angle) * radius - unitSize / 2;
-
-                // Ajustar a límites de ventana
-                x = Math.max(20, Math.min(x, windowWidth - unitSize - 20));
-                y = Math.max(20, Math.min(y, windowHeight - unitSize - 20));
-
-                if (!checkCollisionForKnight(x, y, unitSize, unitSize)) {
-                    System.out.println("✅ Posición lejana encontrada para caballero (anillo " + ring + ")");
+                if (!checkCollisionForKnightReduced(x, y, knightSize, knightSize, 1)) {
+                    System.out.println("✅ Posición encontrada en anillo " + ring);
                     return new Position(x, y);
                 }
             }
@@ -2786,127 +2792,85 @@ public class GameApp extends Application {
     }
 
     /**
-     * Verifica colisiones específicas para caballeros
+     * Verifica colisiones para caballeros con margen reducido
      */
-    private boolean checkCollisionForKnight(double x, double y, double width, double height) {
-        Rectangle newBounds = new Rectangle(x, y, width, height);
+    private boolean checkCollisionForKnightReduced(double x, double y, double width, double height, double margin) {
+        Rectangle newBounds = new Rectangle(x + margin, y + margin, width - margin * 2, height - margin * 2);
 
         // Verificar límites de ventana
         if (x < 0 || y < 0 || x + width > windowWidth || y + height > windowHeight) {
             return true;
         }
 
-        // Verificar colisión con edificios (incluyendo cuarteles)
+        // Verificar colisión con edificios (margen mínimo)
         for (ImageView building : placedBuildings) {
             Rectangle buildingBounds = new Rectangle(
-                    building.getX(),
-                    building.getY(),
-                    building.getFitWidth(),
-                    building.getFitHeight()
+                    building.getX() + margin,
+                    building.getY() + margin,
+                    building.getFitWidth() - margin * 2,
+                    building.getFitHeight() - margin * 2
             );
 
-            // Área de colisión mayor para evitar caballeros muy cerca de edificios
-            Rectangle paddedBounds = new Rectangle(
-                    buildingBounds.getX() - 20,
-                    buildingBounds.getY() - 20,
-                    buildingBounds.getWidth() + 40,
-                    buildingBounds.getHeight() + 40
-            );
-
-            if (newBounds.intersects(paddedBounds.getBoundsInLocal())) {
+            if (newBounds.intersects(buildingBounds.getBoundsInLocal())) {
                 return true;
             }
         }
 
-        // Verificar colisión con otras unidades
+        // Verificar colisión con otras unidades (margen mínimo)
         for (Node node : root.getChildren()) {
             if (node instanceof ImageView) {
                 ImageView existing = (ImageView) node;
 
-                // Si es una unidad (caballeros son más grandes, 60x60)
-                if ((existing.getFitWidth() == 50 && existing.getFitHeight() == 50) || // Mineros/Leñadores
-                        (existing.getFitWidth() == 60 && existing.getFitHeight() == 60)) { // Caballeros
-
-                    if (existing.getId() != null &&
-                            (existing.getId().startsWith("minero_") ||
-                                    existing.getId().startsWith("leñador_") ||
-                                    existing.getId().startsWith("caballero_"))) {
-
-                        Rectangle unitBounds = new Rectangle(
-                                existing.getX(),
-                                existing.getY(),
-                                existing.getFitWidth(),
-                                existing.getFitHeight()
-                        );
-
-                        // Área de colisión mayor para caballeros
-                        Rectangle paddedUnitBounds = new Rectangle(
-                                unitBounds.getX() - 25,
-                                unitBounds.getY() - 25,
-                                unitBounds.getWidth() + 50,
-                                unitBounds.getHeight() + 50
-                        );
-
-                        if (newBounds.intersects(paddedUnitBounds.getBoundsInLocal())) {
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Verificar colisión con árboles
-        for (Node node : root.getChildren()) {
-            if (node instanceof ImageView) {
-                ImageView imageView = (ImageView) node;
-
-                // Si es un árbol
-                if (imageView.getId() != null && imageView.getId().startsWith("Arbol_")) {
-                    Rectangle treeBounds = new Rectangle(
-                            imageView.getX(),
-                            imageView.getY(),
-                            imageView.getFitWidth(),
-                            imageView.getFitHeight()
+                // Si es una unidad
+                if (existing.getFitWidth() == 50 && existing.getFitHeight() == 50) {
+                    Rectangle unitBounds = new Rectangle(
+                            existing.getX() + margin,
+                            existing.getY() + margin,
+                            existing.getFitWidth() - margin * 2,
+                            existing.getFitHeight() - margin * 2
                     );
 
-                    // Área de colisión para árboles
-                    Rectangle paddedTreeBounds = new Rectangle(
-                            treeBounds.getX() - 15,
-                            treeBounds.getY() - 15,
-                            treeBounds.getWidth() + 30,
-                            treeBounds.getHeight() + 30
-                    );
-
-                    if (newBounds.intersects(paddedTreeBounds.getBoundsInLocal())) {
+                    if (newBounds.intersects(unitBounds.getBoundsInLocal())) {
                         return true;
                     }
                 }
             }
         }
 
-        // Verificar colisión con minas
+        // Verificar colisión con árboles (margen mínimo)
         for (Node node : root.getChildren()) {
             if (node instanceof ImageView) {
                 ImageView imageView = (ImageView) node;
 
-                // Si es una mina
+                if (imageView.getId() != null && imageView.getId().startsWith("Arbol_")) {
+                    Rectangle treeBounds = new Rectangle(
+                            imageView.getX() + margin,
+                            imageView.getY() + margin,
+                            imageView.getFitWidth() - margin * 2,
+                            imageView.getFitHeight() - margin * 2
+                    );
+
+                    if (newBounds.intersects(treeBounds.getBoundsInLocal())) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Verificar colisión con minas (margen mínimo)
+        for (Node node : root.getChildren()) {
+            if (node instanceof ImageView) {
+                ImageView imageView = (ImageView) node;
+
                 if (imageView.getId() != null && imageView.getId().startsWith("Mina_")) {
                     Rectangle mineBounds = new Rectangle(
-                            imageView.getX(),
-                            imageView.getY(),
-                            imageView.getFitWidth(),
-                            imageView.getFitHeight()
+                            imageView.getX() + margin,
+                            imageView.getY() + margin,
+                            imageView.getFitWidth() - margin * 2,
+                            imageView.getFitHeight() - margin * 2
                     );
 
-                    // Área de colisión para minas
-                    Rectangle paddedMineBounds = new Rectangle(
-                            mineBounds.getX() - 20,
-                            mineBounds.getY() - 20,
-                            mineBounds.getWidth() + 40,
-                            mineBounds.getHeight() + 40
-                    );
-
-                    if (newBounds.intersects(paddedMineBounds.getBoundsInLocal())) {
+                    if (newBounds.intersects(mineBounds.getBoundsInLocal())) {
                         return true;
                     }
                 }
@@ -2914,104 +2878,6 @@ public class GameApp extends Application {
         }
 
         return false;
-    }
-
-    /**
-     * Muestra advertencia cuando no hay espacio para caballero
-     */
-    private void showNoSpaceForKnight() {
-        Stage warningStage = new Stage();
-        warningStage.initModality(Modality.APPLICATION_MODAL);
-        warningStage.initStyle(StageStyle.TRANSPARENT);
-        warningStage.setTitle("No hay espacio");
-
-        VBox warningPanel = new VBox(15);
-        warningPanel.setPadding(new Insets(25, 30, 25, 30));
-        warningPanel.setAlignment(Pos.CENTER);
-        warningPanel.setStyle(
-                "-fx-background-color: rgba(255, 255, 255, 0.50); " +
-                        "-fx-background-radius: 15; " +
-                        "-fx-border-color: #c0392b; " +
-                        "-fx-border-width: 2; " +
-                        "-fx-border-radius: 15; " +
-                        "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0.5, 0, 2);"
-        );
-
-        Label warningIcon = new Label("⚠");
-        warningIcon.setStyle("-fx-font-size: 36px; -fx-padding: 0 0 5 0;");
-
-        VBox messageContainer = new VBox(5);
-        messageContainer.setAlignment(Pos.CENTER);
-
-        Label titleLabel = new Label("No hay espacio disponible");
-        titleLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #c0392b;");
-
-        Label detailLabel = new Label("No hay espacio suficiente cerca del cuartel\npara crear un nuevo caballero");
-        detailLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: black; -fx-text-alignment: center;");
-        detailLabel.setWrapText(true);
-
-        messageContainer.getChildren().addAll(titleLabel, detailLabel);
-
-        Button okButton = new Button("Entendido");
-        okButton.setPrefWidth(150);
-        okButton.setPrefHeight(38);
-        okButton.setStyle(
-                "-fx-background-color: rgba(255, 255, 255, 0.5); " +
-                        "-fx-background-radius: 6; " +
-                        "-fx-border-color: #c0392b; " +
-                        "-fx-border-width: 2; " +
-                        "-fx-border-radius: 6; " +
-                        "-fx-cursor: hand; " +
-                        "-fx-text-fill: #2c3e50; " +
-                        "-fx-font-size: 12px; " +
-                        "-fx-font-weight: bold;"
-        );
-
-        okButton.setOnMouseEntered(e -> {
-            okButton.setStyle(
-                    "-fx-background-color: rgba(236, 240, 241, 0.5); " +
-                            "-fx-background-radius: 6; " +
-                            "-fx-border-color: #e74c3c; " +
-                            "-fx-border-width: 2.5; " +
-                            "-fx-border-radius: 6; " +
-                            "-fx-cursor: hand; " +
-                            "-fx-text-fill: #2c3e50; " +
-                            "-fx-font-size: 12px; " +
-                            "-fx-font-weight: bold; " +
-                            "-fx-effect: dropshadow(gaussian, rgba(231, 76, 60, 0.3), 5, 0.5, 0, 1);"
-            );
-        });
-
-        okButton.setOnMouseExited(e -> {
-            okButton.setStyle(
-                    "-fx-background-color: rgba(255, 255, 255, 0.5); " +
-                            "-fx-background-radius: 6; " +
-                            "-fx-border-color: #c0392b; " +
-                            "-fx-border-width: 2; " +
-                            "-fx-border-radius: 6; " +
-                            "-fx-cursor: hand; " +
-                            "-fx-text-fill: #2c3e50; " +
-                            "-fx-font-size: 12px; " +
-                            "-fx-font-weight: bold; " +
-                            "-fx-effect: null;"
-            );
-        });
-
-        okButton.setOnAction(e -> warningStage.close());
-
-        warningPanel.getChildren().addAll(warningIcon, messageContainer, okButton);
-
-        StackPane rootPane = new StackPane(warningPanel);
-        rootPane.setStyle("-fx-background-color: transparent;");
-        rootPane.setAlignment(Pos.CENTER);
-
-        Scene warningScene = new Scene(rootPane, 320, 250);
-        warningScene.setFill(Color.TRANSPARENT);
-
-        warningStage.initOwner(root.getScene().getWindow());
-        warningStage.setScene(warningScene);
-        warningStage.setResizable(false);
-        warningStage.showAndWait();
     }
 
     /**
@@ -3030,6 +2896,9 @@ public class GameApp extends Application {
             unitView.setY(y);
 
             unitView.setId(unitType + "_" + System.currentTimeMillis());
+
+            // Guardar referencia al caballero creado
+            createdKnights.add(unitView);
 
             // Efecto especial para caballero
             DropShadow shadow = new DropShadow();
@@ -3144,6 +3013,11 @@ public class GameApp extends Application {
         Pane knight = new Pane(armor, shield, crossVertical, crossHorizontal);
         knight.setId(unitType + "_placeholder_" + System.currentTimeMillis());
 
+        // Guardar referencia al placeholder
+        ImageView placeholderView = new ImageView();
+        placeholderView.setId(knight.getId());
+        createdKnights.add(placeholderView);
+
         // Hacer interactivo
         knight.setOnMouseClicked(e -> System.out.println("♞ Caballero placeholder clickeado"));
         knight.setOnMouseEntered(e -> {
@@ -3190,7 +3064,7 @@ public class GameApp extends Application {
         titleLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #c0392b;");
 
         Label detailLabel = new Label("Necesitas 50 Oro \npara crear un Caballero");
-        detailLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: ##000000; -fx-text-alignment: center;");
+        detailLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #000000; -fx-text-alignment: center;");
         detailLabel.setWrapText(true);
 
         messageContainer.getChildren().addAll(titleLabel, detailLabel);
