@@ -43,4 +43,22 @@ public class ResourceCollection {
            }
         }
     }
+
+    public boolean removeResource(ResourceType type, int amount) {
+        if (amount <= 0) {
+            return false; // Cantidad inválida
+        }
+
+        int currentAmount = storage.getOrDefault(type, 0);
+
+        if (currentAmount < amount) {
+            return false; // No hay suficientes recursos
+        }
+
+        // Restar la cantidad
+        storage.put(type, currentAmount - amount);
+
+        return true;
+    }
+
 }

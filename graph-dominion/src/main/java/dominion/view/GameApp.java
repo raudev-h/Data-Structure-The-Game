@@ -1,6 +1,7 @@
 package dominion.view;
 
 import com.almasb.fxgl.app.GameController;
+import javafx.animation.RotateTransition; // Añade esta línea si no existe
 import dominion.core.GameControler;
 import dominion.core.GameMap;
 import dominion.core.GameTimer;
@@ -53,8 +54,9 @@ public class GameApp extends Application {
     private Timer gameTimer;
     private StackPane pauseOverlay;
     private boolean isGamePaused = false;
-    private ImageView barracksView; // Para referencia del cuartel
     private Popup barracksPopup;    // Para el menú del cuartel
+
+
 
     @Override
     public void start(Stage stage) {
@@ -726,6 +728,7 @@ public class GameApp extends Application {
             TownHall townHall1 = new TownHall("1", territory1, 100, 5);
             territory1.setTownHall(townHall1);
             territory1.getTownHall().getStoredResources().addResource(ResourceType.WOOD, 600);
+            territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, 50);
 
             DropShadow glow = new DropShadow();
             glow.setColor(Color.rgb(255, 215, 0, 0.7));
@@ -1602,18 +1605,41 @@ public class GameApp extends Application {
     private void makeBuildingInteractive(ImageView buildingView, String buildingType) {
         buildingView.setOnMouseClicked(e -> {
             System.out.println("🏠 " + buildingType + " clickeado");
+
+            // Si es un cuartel, mostrar su menú especial
+            if (buildingType.equalsIgnoreCase("Cuartel")) {
+                System.out.println("⚔️ Cuartel clickeado - Abriendo menú de unidades...");
+                showBarracksMenu(buildingView);
+            }
         });
 
         buildingView.setOnMouseEntered(e -> {
             buildingView.setCursor(javafx.scene.Cursor.HAND);
             buildingView.setScaleX(1.05);
             buildingView.setScaleY(1.05);
+
+            // Efecto especial para cuarteles
+            if (buildingType.equalsIgnoreCase("Cuartel")) {
+                DropShadow glow = new DropShadow();
+                glow.setColor(Color.rgb(220, 20, 60, 0.7)); // Rojo carmesí para cuartel
+                glow.setRadius(15);
+                buildingView.setEffect(glow);
+            }
         });
 
         buildingView.setOnMouseExited(e -> {
             buildingView.setCursor(javafx.scene.Cursor.DEFAULT);
             buildingView.setScaleX(1.0);
             buildingView.setScaleY(1.0);
+
+            // Restaurar efecto normal para cuarteles
+            if (buildingType.equalsIgnoreCase("Cuartel")) {
+                DropShadow shadow = new DropShadow();
+                shadow.setColor(Color.rgb(0, 0, 0, 0.5));
+                shadow.setRadius(10);
+                shadow.setSpread(0.1);
+                buildingView.setEffect(shadow);
+            }
         });
     }
 
@@ -2308,6 +2334,927 @@ public class GameApp extends Application {
         });
 
         root.getChildren().add(mine);
+    }
+    /**
+     * Muestra el menú del Cuartel
+     */
+    private void showBarracksMenu(ImageView barracksView) {
+        if (barracksPopup != null) {
+            barracksPopup.hide();
+        }
+
+        barracksPopup = new Popup();
+        barracksPopup.setAutoFix(true);
+        barracksPopup.setAutoHide(true);
+        barracksPopup.setHideOnEscape(true);
+
+        VBox mainPanel = createBarracksPanel();
+        StackPane container = new StackPane(mainPanel);
+
+        double panelWidth = 280;
+        double panelHeight = 220;
+
+        // Posicionar cerca del cuartel, no en el centro
+        double barracksX = barracksView.getX() + barracksView.getFitWidth()/2;
+        double barracksY = barracksView.getY();
+
+        double panelX = Math.max(20, Math.min(barracksX - panelWidth/2, windowWidth - panelWidth - 20));
+        double panelY = Math.max(20, Math.min(barracksY - panelHeight - 10, windowHeight - panelHeight - 20));
+
+        barracksPopup.getContent().add(container);
+        barracksPopup.show(root.getScene().getWindow(), panelX, panelY);
+
+        animateBarracksEntrance(mainPanel);
+    }
+
+    /**
+     * Crea el panel del Cuartel con el MISMO estilo que el TownHall
+     */
+    private VBox createBarracksPanel() {
+        VBox panel = new VBox(10);
+        panel.setAlignment(Pos.TOP_CENTER);
+        panel.setPadding(new Insets(20, 20, 20, 20));
+        panel.setPrefSize(280, 220);
+
+        // MISMO estilo EXACTO que el TownHall (50% opacidad)
+        panel.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.50); " + // 50% opacidad
+                        "-fx-background-radius: 12; " +
+                        "-fx-border-color: #dcdde1; " +
+                        "-fx-border-width: 1; " +
+                        "-fx-border-radius: 12; " +
+                        "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.15), 15, 0.5, 0, 3);"
+        );
+
+        // Título con icono de cuartel
+        HBox titleBox = new HBox(10);
+        titleBox.setAlignment(Pos.CENTER);
+
+        Label swordIcon = new Label("⚔");
+        swordIcon.setStyle("-fx-font-size: 20px;");
+
+        Label title = new Label("Cuartel");
+        title.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;");
+
+        titleBox.getChildren().addAll(swordIcon, title);
+
+        // Separador elegante (mismo que TownHall pero color diferente)
+        Region separator = new Region();
+        separator.setPrefHeight(2);
+        separator.setPrefWidth(200);
+        separator.setStyle("-fx-background-color: linear-gradient(to right, transparent, #c0392b, transparent);"); // Rojo para cuartel
+
+        // Contenedor de botones
+        VBox buttonContainer = new VBox(8);
+        buttonContainer.setAlignment(Pos.CENTER);
+        buttonContainer.setPadding(new Insets(15, 0, 0, 0));
+
+        // Botón para crear caballero
+        Button knightButton = createBarracksButton("♞", "Crear Caballero", "50 Oro");
+
+        knightButton.setOnAction(e -> {
+            System.out.println("♞ Creando Caballero...");
+            barracksPopup.hide();
+            createKnightUnit();
+        });
+
+        buttonContainer.getChildren().addAll(knightButton);
+
+        panel.getChildren().addAll(titleBox, separator, buttonContainer);
+
+        return panel;
+    }
+
+    /**
+     * Crea un botón para el menú del Cuartel con el MISMO estilo que el TownHall
+     */
+    private Button createBarracksButton(String icon, String text, String cost) {
+        HBox buttonContent = new HBox(10);
+        buttonContent.setAlignment(Pos.CENTER_LEFT);
+        buttonContent.setPadding(new Insets(8, 15, 8, 15));
+
+        Label iconLabel = new Label(icon);
+        iconLabel.setStyle("-fx-font-size: 22px; -fx-padding: 0 10 0 0;");
+
+        VBox textContainer = new VBox(2);
+        textContainer.setAlignment(Pos.CENTER_LEFT);
+
+        Label textLabel = new Label(text);
+        textLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;");
+
+        Label costLabel = new Label(cost);
+        costLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #7f8c8d;");
+
+        textContainer.getChildren().addAll(textLabel, costLabel);
+        buttonContent.getChildren().addAll(iconLabel, textContainer);
+
+        Button button = new Button();
+        button.setGraphic(buttonContent);
+        button.setPrefWidth(240);
+        button.setPrefHeight(55);
+        button.setAlignment(Pos.CENTER_LEFT);
+
+        // MISMO estilo EXACTO que los botones del TownHall (50% opacidad)
+        String baseStyle =
+                "-fx-background-color: rgba(255, 255, 255, 0.50); " + // 50% opacidad
+                        "-fx-background-radius: 8; " +
+                        "-fx-border-color: #dcdde1; " +
+                        "-fx-border-width: 1; " +
+                        "-fx-border-radius: 8; " +
+                        "-fx-cursor: hand; " +
+                        "-fx-text-fill: #2c3e50;";
+
+        // Color específico para botones de cuartel (rojo/marrón)
+        String borderColor = "#c0392b"; // Rojo oscuro para cuartel
+
+        // Aplicar el color de borde específico
+        button.setStyle(baseStyle +
+                "-fx-border-color: " + borderColor + ";" +
+                "-fx-border-width: 2;");
+
+        // EFECTO HOVER IDÉNTICO a los botones del TownHall
+        button.setOnMouseEntered(e -> {
+            String hoverStyle =
+                    "-fx-background-color: rgba(236, 240, 241, 0.50); " + // 50% opacidad en hover
+                            "-fx-background-radius: 8; " +
+                            "-fx-border-color: " + borderColor + ";" +
+                            "-fx-border-width: 2.5; " +
+                            "-fx-border-radius: 8; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-effect: dropshadow(gaussian, rgba(192, 57, 43, 0.4), 8, 0.5, 0, 2);";
+
+            button.setStyle(hoverStyle);
+            button.setScaleX(1.02);
+            button.setScaleY(1.02);
+        });
+
+        button.setOnMouseExited(e -> {
+            button.setStyle(baseStyle +
+                    "-fx-border-color: " + borderColor + ";" +
+                    "-fx-border-width: 2;");
+            button.setScaleX(1.0);
+            button.setScaleY(1.0);
+        });
+
+        // Efecto al presionar
+        button.setOnMousePressed(e -> {
+            button.setStyle(baseStyle +
+                    "-fx-border-color: " + borderColor + ";" +
+                    "-fx-border-width: 3; " +
+                    "-fx-background-color: rgba(220, 220, 220, 0.50);"); // 50% opacidad
+        });
+
+        button.setOnMouseReleased(e -> {
+            button.setStyle(baseStyle +
+                    "-fx-border-color: " + borderColor + ";" +
+                    "-fx-border-width: 2;");
+        });
+
+        return button;
+    }
+
+    /**
+     * Animación de entrada para el menú del cuartel
+     */
+    private void animateBarracksEntrance(VBox panel) {
+        panel.setScaleX(0.9);
+        panel.setScaleY(0.9);
+        panel.setOpacity(0);
+
+        ScaleTransition scale = new ScaleTransition(Duration.millis(400), panel);
+        scale.setToX(1.0);
+        scale.setToY(1.0);
+        scale.setInterpolator(javafx.animation.Interpolator.EASE_OUT);
+
+        FadeTransition fade = new FadeTransition(Duration.millis(400), panel);
+        fade.setToValue(1.0);
+        fade.setInterpolator(javafx.animation.Interpolator.EASE_OUT);
+
+        javafx.animation.ParallelTransition parallel = new javafx.animation.ParallelTransition(scale, fade);
+        parallel.play();
+    }
+
+    /**
+     * Crea una unidad de caballero
+     */
+    private void createKnightUnit() {
+        try {
+            // Verificar recursos
+            if (territory1 != null && territory1.getTownHall() != null) {
+                int gold = territory1.getTownHall().getStoredResources().getAmount(ResourceType.GOLD);
+
+                if (gold >= 50) {
+                    // Restar recursos
+                    territory1.getTownHall().getStoredResources().removeResource(ResourceType.GOLD, 600);
+
+                    // Actualizar display de recursos
+                    updateResourceDisplay();
+
+                    // Encontrar un cuartel para crear el caballero cerca
+                    ImageView nearestBarracks = findNearestBarracks();
+                    if (nearestBarracks != null) {
+                        createUnitNextToBarracks(nearestBarracks, "caballero", "caballero.png", 60);
+                        System.out.println("♞ Caballero creado exitosamente!");
+                    } else {
+                        System.out.println("⚠️ No se encontró un cuartel para crear el caballero");
+                    }
+                } else {
+                    showInsufficientResourcesForKnight();
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("❌ Error al crear caballero: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Encuentra el cuartel más cercano al cursor/clic
+     */
+    private ImageView findNearestBarracks() {
+        ImageView nearestBarracks = null;
+        double minDistance = Double.MAX_VALUE;
+
+        // Buscar entre todos los edificios colocados
+        for (ImageView building : placedBuildings) {
+            // Verificar si es un cuartel por tamaño (170x170) y por posición (no es el TownHall)
+            if (building.getFitWidth() == 170 && building.getFitHeight() == 170) {
+                // El TownHall está en una posición específica, verificar que no sea ese
+                double townHallX = windowWidth * 0.3 + 100;
+                double townHallY = windowHeight * 0.4 + 100;
+                double buildingX = building.getX();
+                double buildingY = building.getY();
+
+                // Si no está en la posición del TownHall, es un cuartel
+                if (Math.abs(buildingX - townHallX) > 50 || Math.abs(buildingY - townHallY) > 50) {
+                    // Calcular distancia desde el centro de la pantalla
+                    double centerX = windowWidth / 2;
+                    double centerY = windowHeight / 2;
+                    double buildingCenterX = buildingX + building.getFitWidth() / 2;
+                    double buildingCenterY = buildingY + building.getFitHeight() / 2;
+
+                    double distance = Math.sqrt(
+                            Math.pow(buildingCenterX - centerX, 2) +
+                                    Math.pow(buildingCenterY - centerY, 2)
+                    );
+
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        nearestBarracks = building;
+                    }
+                }
+            }
+        }
+
+        if (nearestBarracks != null) {
+            System.out.println("📍 Cuartel encontrado en: (" +
+                    (int)nearestBarracks.getX() + ", " +
+                    (int)nearestBarracks.getY() + ")");
+        } else {
+            System.out.println("⚠️ No se encontró ningún cuartel");
+        }
+
+        return nearestBarracks;
+    }
+
+    /**
+     * Crea un caballero cerca de un cuartel específico
+     */
+    private void createUnitNextToBarracks(ImageView barracksView, String unitType, String imageName, double unitSize) {
+        try {
+            if (barracksView == null) {
+                System.out.println("❌ No hay cuartel para crear unidades");
+                return;
+            }
+
+            double barracksX = barracksView.getX();
+            double barracksY = barracksView.getY();
+            double barracksSize = barracksView.getFitWidth();
+            double spacing = 15; // Más espacio para caballeros
+
+            System.out.println("🔍 Buscando posición para caballero cerca del cuartel...");
+            System.out.println("📍 Cuartel en: (" + (int)barracksX + ", " + (int)barracksY + ")");
+
+            // Buscar posición específica para caballero
+            Position validPosition = findPositionForKnight(barracksX, barracksY, barracksSize, unitSize, spacing);
+
+            if (validPosition == null) {
+                System.out.println("❌ No hay espacio disponible cerca del cuartel para el " + unitType);
+                // Intentar buscar más lejos
+                validPosition = findPositionForUnitFar(barracksX, barracksY, barracksSize, unitSize, spacing);
+            }
+
+            if (validPosition != null) {
+                createKnightAtPosition(unitType, imageName, validPosition.x, validPosition.y, 50);
+            } else {
+                System.out.println("❌ No se pudo encontrar espacio para el caballero");
+                showNoSpaceForKnight();
+            }
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al crear " + unitType + ": " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Busca posición específica para caballero cerca del cuartel
+     */
+    private Position findPositionForKnight(double barracksX, double barracksY, double barracksSize,
+                                           double unitSize, double spacing) {
+        System.out.println("🔍 Buscando posición óptima para caballero...");
+
+        // Lista de posiciones preferenciales alrededor del cuartel
+        List<Position> preferredPositions = new ArrayList<>();
+
+        // Calcular centro del cuartel
+        double centerX = barracksX + barracksSize / 2;
+        double centerY = barracksY + barracksSize / 2;
+
+        // Distancia para posicionar caballeros (más lejos que mineros/leñadores)
+        double distance = barracksSize + unitSize * 2 + spacing * 2;
+
+        // 8 posiciones alrededor del cuartel (como puntos cardinales)
+        for (int i = 0; i < 8; i++) {
+            double angle = 2 * Math.PI * i / 8;
+            double x = centerX + Math.cos(angle) * distance - unitSize / 2;
+            double y = centerY + Math.sin(angle) * distance - unitSize / 2;
+            preferredPositions.add(new Position(x, y));
+        }
+
+        // Posiciones adicionales más cercanas (4 puntos intermedios)
+        double closerDistance = barracksSize + unitSize + spacing;
+        for (int i = 0; i < 4; i++) {
+            double angle = 2 * Math.PI * i / 4 + Math.PI / 4; // Desplazado 45 grados
+            double x = centerX + Math.cos(angle) * closerDistance - unitSize / 2;
+            double y = centerY + Math.sin(angle) * closerDistance - unitSize / 2;
+            preferredPositions.add(new Position(x, y));
+        }
+
+        // Intentar posiciones preferenciales primero
+        for (Position pos : preferredPositions) {
+            if (!checkCollisionForKnight(pos.x, pos.y, unitSize, unitSize) &&
+                    pos.x >= 0 && pos.y >= 0 &&
+                    pos.x + unitSize <= windowWidth &&
+                    pos.y + unitSize <= windowHeight) {
+
+                System.out.println("✅ Posición preferencial encontrada para caballero en: (" +
+                        (int)pos.x + ", " + (int)pos.y + ")");
+                return pos;
+            }
+        }
+
+        // Si no encuentra en posiciones preferenciales, buscar más posiciones
+        return findMorePositionsForKnight(barracksX, barracksY, barracksSize, unitSize, spacing);
+    }
+
+    /**
+     * Busca más posiciones para caballero
+     */
+    private Position findMorePositionsForKnight(double barracksX, double barracksY, double barracksSize,
+                                                double unitSize, double spacing) {
+        System.out.println("🔍 Buscando más posiciones para caballero...");
+
+        List<Position> morePositions = new ArrayList<>();
+        double centerX = barracksX + barracksSize / 2;
+        double centerY = barracksY + barracksSize / 2;
+
+        // Crear círculos concéntricos de posiciones
+        for (double radius = barracksSize + unitSize + spacing;
+             radius <= barracksSize + unitSize * 5;
+             radius += unitSize + spacing) {
+
+            // Más puntos en círculos más grandes
+            int points = (int)(radius / 20) + 8;
+            points = Math.min(points, 24); // Máximo 24 puntos por círculo
+
+            for (int i = 0; i < points; i++) {
+                double angle = 2 * Math.PI * i / points;
+                double x = centerX + Math.cos(angle) * radius - unitSize / 2;
+                double y = centerY + Math.sin(angle) * radius - unitSize / 2;
+                morePositions.add(new Position(x, y));
+            }
+        }
+
+        // Intentar todas las posiciones
+        for (Position pos : morePositions) {
+            if (!checkCollisionForKnight(pos.x, pos.y, unitSize, unitSize) &&
+                    pos.x >= 0 && pos.y >= 0 &&
+                    pos.x + unitSize <= windowWidth &&
+                    pos.y + unitSize <= windowHeight) {
+
+                System.out.println("✅ Posición encontrada para caballero en radio " +
+                        (int)Math.sqrt(Math.pow(pos.x - centerX, 2) + Math.pow(pos.y - centerY, 2)) + "px");
+                return pos;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Busca posición más lejana si no hay cerca
+     */
+    private Position findPositionForUnitFar(double barracksX, double barracksY, double barracksSize,
+                                            double unitSize, double spacing) {
+        System.out.println("🔍 Buscando posición lejana para caballero...");
+
+        double centerX = barracksX + barracksSize / 2;
+        double centerY = barracksY + barracksSize / 2;
+
+        // Intentar en anillos cada vez más lejanos
+        for (int ring = 1; ring <= 10; ring++) {
+            double radius = barracksSize + unitSize * (3 + ring) + spacing * ring;
+            int points = 12 + ring * 2; // Más puntos en anillos más grandes
+
+            for (int i = 0; i < points; i++) {
+                double angle = 2 * Math.PI * i / points;
+                double x = centerX + Math.cos(angle) * radius - unitSize / 2;
+                double y = centerY + Math.sin(angle) * radius - unitSize / 2;
+
+                // Ajustar a límites de ventana
+                x = Math.max(20, Math.min(x, windowWidth - unitSize - 20));
+                y = Math.max(20, Math.min(y, windowHeight - unitSize - 20));
+
+                if (!checkCollisionForKnight(x, y, unitSize, unitSize)) {
+                    System.out.println("✅ Posición lejana encontrada para caballero (anillo " + ring + ")");
+                    return new Position(x, y);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Verifica colisiones específicas para caballeros
+     */
+    private boolean checkCollisionForKnight(double x, double y, double width, double height) {
+        Rectangle newBounds = new Rectangle(x, y, width, height);
+
+        // Verificar límites de ventana
+        if (x < 0 || y < 0 || x + width > windowWidth || y + height > windowHeight) {
+            return true;
+        }
+
+        // Verificar colisión con edificios (incluyendo cuarteles)
+        for (ImageView building : placedBuildings) {
+            Rectangle buildingBounds = new Rectangle(
+                    building.getX(),
+                    building.getY(),
+                    building.getFitWidth(),
+                    building.getFitHeight()
+            );
+
+            // Área de colisión mayor para evitar caballeros muy cerca de edificios
+            Rectangle paddedBounds = new Rectangle(
+                    buildingBounds.getX() - 20,
+                    buildingBounds.getY() - 20,
+                    buildingBounds.getWidth() + 40,
+                    buildingBounds.getHeight() + 40
+            );
+
+            if (newBounds.intersects(paddedBounds.getBoundsInLocal())) {
+                return true;
+            }
+        }
+
+        // Verificar colisión con otras unidades
+        for (Node node : root.getChildren()) {
+            if (node instanceof ImageView) {
+                ImageView existing = (ImageView) node;
+
+                // Si es una unidad (caballeros son más grandes, 60x60)
+                if ((existing.getFitWidth() == 50 && existing.getFitHeight() == 50) || // Mineros/Leñadores
+                        (existing.getFitWidth() == 60 && existing.getFitHeight() == 60)) { // Caballeros
+
+                    if (existing.getId() != null &&
+                            (existing.getId().startsWith("minero_") ||
+                                    existing.getId().startsWith("leñador_") ||
+                                    existing.getId().startsWith("caballero_"))) {
+
+                        Rectangle unitBounds = new Rectangle(
+                                existing.getX(),
+                                existing.getY(),
+                                existing.getFitWidth(),
+                                existing.getFitHeight()
+                        );
+
+                        // Área de colisión mayor para caballeros
+                        Rectangle paddedUnitBounds = new Rectangle(
+                                unitBounds.getX() - 25,
+                                unitBounds.getY() - 25,
+                                unitBounds.getWidth() + 50,
+                                unitBounds.getHeight() + 50
+                        );
+
+                        if (newBounds.intersects(paddedUnitBounds.getBoundsInLocal())) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Verificar colisión con árboles
+        for (Node node : root.getChildren()) {
+            if (node instanceof ImageView) {
+                ImageView imageView = (ImageView) node;
+
+                // Si es un árbol
+                if (imageView.getId() != null && imageView.getId().startsWith("Arbol_")) {
+                    Rectangle treeBounds = new Rectangle(
+                            imageView.getX(),
+                            imageView.getY(),
+                            imageView.getFitWidth(),
+                            imageView.getFitHeight()
+                    );
+
+                    // Área de colisión para árboles
+                    Rectangle paddedTreeBounds = new Rectangle(
+                            treeBounds.getX() - 15,
+                            treeBounds.getY() - 15,
+                            treeBounds.getWidth() + 30,
+                            treeBounds.getHeight() + 30
+                    );
+
+                    if (newBounds.intersects(paddedTreeBounds.getBoundsInLocal())) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Verificar colisión con minas
+        for (Node node : root.getChildren()) {
+            if (node instanceof ImageView) {
+                ImageView imageView = (ImageView) node;
+
+                // Si es una mina
+                if (imageView.getId() != null && imageView.getId().startsWith("Mina_")) {
+                    Rectangle mineBounds = new Rectangle(
+                            imageView.getX(),
+                            imageView.getY(),
+                            imageView.getFitWidth(),
+                            imageView.getFitHeight()
+                    );
+
+                    // Área de colisión para minas
+                    Rectangle paddedMineBounds = new Rectangle(
+                            mineBounds.getX() - 20,
+                            mineBounds.getY() - 20,
+                            mineBounds.getWidth() + 40,
+                            mineBounds.getHeight() + 40
+                    );
+
+                    if (newBounds.intersects(paddedMineBounds.getBoundsInLocal())) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Muestra advertencia cuando no hay espacio para caballero
+     */
+    private void showNoSpaceForKnight() {
+        Stage warningStage = new Stage();
+        warningStage.initModality(Modality.APPLICATION_MODAL);
+        warningStage.initStyle(StageStyle.TRANSPARENT);
+        warningStage.setTitle("No hay espacio");
+
+        VBox warningPanel = new VBox(15);
+        warningPanel.setPadding(new Insets(25, 30, 25, 30));
+        warningPanel.setAlignment(Pos.CENTER);
+        warningPanel.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.50); " +
+                        "-fx-background-radius: 15; " +
+                        "-fx-border-color: #c0392b; " +
+                        "-fx-border-width: 2; " +
+                        "-fx-border-radius: 15; " +
+                        "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0.5, 0, 2);"
+        );
+
+        Label warningIcon = new Label("⚠");
+        warningIcon.setStyle("-fx-font-size: 36px; -fx-padding: 0 0 5 0;");
+
+        VBox messageContainer = new VBox(5);
+        messageContainer.setAlignment(Pos.CENTER);
+
+        Label titleLabel = new Label("No hay espacio disponible");
+        titleLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #c0392b;");
+
+        Label detailLabel = new Label("No hay espacio suficiente cerca del cuartel\npara crear un nuevo caballero");
+        detailLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: black; -fx-text-alignment: center;");
+        detailLabel.setWrapText(true);
+
+        messageContainer.getChildren().addAll(titleLabel, detailLabel);
+
+        Button okButton = new Button("Entendido");
+        okButton.setPrefWidth(150);
+        okButton.setPrefHeight(38);
+        okButton.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.5); " +
+                        "-fx-background-radius: 6; " +
+                        "-fx-border-color: #c0392b; " +
+                        "-fx-border-width: 2; " +
+                        "-fx-border-radius: 6; " +
+                        "-fx-cursor: hand; " +
+                        "-fx-text-fill: #2c3e50; " +
+                        "-fx-font-size: 12px; " +
+                        "-fx-font-weight: bold;"
+        );
+
+        okButton.setOnMouseEntered(e -> {
+            okButton.setStyle(
+                    "-fx-background-color: rgba(236, 240, 241, 0.5); " +
+                            "-fx-background-radius: 6; " +
+                            "-fx-border-color: #e74c3c; " +
+                            "-fx-border-width: 2.5; " +
+                            "-fx-border-radius: 6; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-text-fill: #2c3e50; " +
+                            "-fx-font-size: 12px; " +
+                            "-fx-font-weight: bold; " +
+                            "-fx-effect: dropshadow(gaussian, rgba(231, 76, 60, 0.3), 5, 0.5, 0, 1);"
+            );
+        });
+
+        okButton.setOnMouseExited(e -> {
+            okButton.setStyle(
+                    "-fx-background-color: rgba(255, 255, 255, 0.5); " +
+                            "-fx-background-radius: 6; " +
+                            "-fx-border-color: #c0392b; " +
+                            "-fx-border-width: 2; " +
+                            "-fx-border-radius: 6; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-text-fill: #2c3e50; " +
+                            "-fx-font-size: 12px; " +
+                            "-fx-font-weight: bold; " +
+                            "-fx-effect: null;"
+            );
+        });
+
+        okButton.setOnAction(e -> warningStage.close());
+
+        warningPanel.getChildren().addAll(warningIcon, messageContainer, okButton);
+
+        StackPane rootPane = new StackPane(warningPanel);
+        rootPane.setStyle("-fx-background-color: transparent;");
+        rootPane.setAlignment(Pos.CENTER);
+
+        Scene warningScene = new Scene(rootPane, 320, 250);
+        warningScene.setFill(Color.TRANSPARENT);
+
+        warningStage.initOwner(root.getScene().getWindow());
+        warningStage.setScene(warningScene);
+        warningStage.setResizable(false);
+        warningStage.showAndWait();
+    }
+
+    /**
+     * Crea un caballero en una posición específica
+     */
+    private void createKnightAtPosition(String unitType, String imageName, double x, double y, double size) {
+        try {
+            String imagePath = "file:src/main/resources/images/" + imageName;
+            Image unitImage = new Image(imagePath);
+
+            ImageView unitView = new ImageView(unitImage);
+            unitView.setFitWidth(size);
+            unitView.setFitHeight(size);
+            unitView.setPreserveRatio(true);
+            unitView.setX(x);
+            unitView.setY(y);
+
+            unitView.setId(unitType + "_" + System.currentTimeMillis());
+
+            // Efecto especial para caballero
+            DropShadow shadow = new DropShadow();
+            shadow.setColor(Color.rgb(184, 134, 11, 0.8)); // Dorado para caballero
+            shadow.setRadius(10);
+            shadow.setSpread(0.2);
+            unitView.setEffect(shadow);
+
+            // Animación de aparición
+            FadeTransition fade = new FadeTransition(Duration.millis(500), unitView);
+            fade.setFromValue(0.0);
+            fade.setToValue(1.0);
+
+            ScaleTransition scale = new ScaleTransition(Duration.millis(500), unitView);
+            scale.setFromX(0.3);
+            scale.setFromY(0.3);
+            scale.setToX(1.0);
+            scale.setToY(1.0);
+
+            root.getChildren().add(unitView);
+
+            javafx.animation.ParallelTransition parallel =
+                    new javafx.animation.ParallelTransition(fade, scale);
+            parallel.play();
+
+            System.out.println("✅ " + unitType + " creado en: (" + (int)x + ", " + (int)y + ")");
+
+            // Hacer el caballero interactivo
+            makeKnightInteractive(unitView, unitType);
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al crear " + unitType + ": " + e.getMessage());
+
+            // Crear placeholder si falla la imagen
+            createKnightPlaceholder(x, y, size, unitType);
+        }
+    }
+
+    /**
+     * Hace un caballero interactivo
+     */
+    private void makeKnightInteractive(ImageView knightView, String knightType) {
+        knightView.setOnMouseClicked(event -> {
+            System.out.println("♞ " + knightType + " clickeado - ¡Listo para la batalla!");
+
+            // Efecto especial al hacer clic
+            FadeTransition flash = new FadeTransition(Duration.millis(100), knightView);
+            flash.setFromValue(1.0);
+            flash.setToValue(0.8);
+            flash.setAutoReverse(true);
+            flash.setCycleCount(4);
+            flash.play();
+        });
+
+        knightView.setOnMouseEntered(e -> {
+            knightView.setCursor(javafx.scene.Cursor.HAND);
+            knightView.setScaleX(1.1);
+            knightView.setScaleY(1.1);
+
+            // Efecto de resaltado para caballero
+            DropShadow highlight = new DropShadow();
+            highlight.setColor(Color.rgb(255, 215, 0, 0.9));
+            highlight.setRadius(15);
+            knightView.setEffect(highlight);
+        });
+
+        knightView.setOnMouseExited(e -> {
+            knightView.setCursor(javafx.scene.Cursor.DEFAULT);
+            knightView.setScaleX(1.0);
+            knightView.setScaleY(1.0);
+
+            // Restaurar efecto normal
+            DropShadow shadow = new DropShadow();
+            shadow.setColor(Color.rgb(184, 134, 11, 0.8));
+            shadow.setRadius(10);
+            shadow.setSpread(0.2);
+            knightView.setEffect(shadow);
+        });
+    }
+
+    /**
+     * Crea un placeholder para caballero si no se carga la imagen
+     */
+    private void createKnightPlaceholder(double x, double y, double size, String unitType) {
+        // Círculo para la armadura
+        javafx.scene.shape.Circle armor = new javafx.scene.shape.Circle(size/2);
+        armor.setCenterX(x + size/2);
+        armor.setCenterY(y + size/2);
+        armor.setFill(Color.rgb(70, 70, 70)); // Gris acero
+
+        // Detalle del escudo
+        javafx.scene.shape.Circle shield = new javafx.scene.shape.Circle(size/3);
+        shield.setCenterX(x + size/2);
+        shield.setCenterY(y + size/2);
+        shield.setFill(Color.rgb(30, 30, 30));
+
+        // Cruz en el escudo
+        javafx.scene.shape.Line crossVertical = new javafx.scene.shape.Line(
+                x + size/2, y + size/2 - size/4,
+                x + size/2, y + size/2 + size/4
+        );
+        crossVertical.setStroke(Color.SILVER);
+        crossVertical.setStrokeWidth(2);
+
+        javafx.scene.shape.Line crossHorizontal = new javafx.scene.shape.Line(
+                x + size/2 - size/4, y + size/2,
+                x + size/2 + size/4, y + size/2
+        );
+        crossHorizontal.setStroke(Color.SILVER);
+        crossHorizontal.setStrokeWidth(2);
+
+        Pane knight = new Pane(armor, shield, crossVertical, crossHorizontal);
+        knight.setId(unitType + "_placeholder_" + System.currentTimeMillis());
+
+        // Hacer interactivo
+        knight.setOnMouseClicked(e -> System.out.println("♞ Caballero placeholder clickeado"));
+        knight.setOnMouseEntered(e -> {
+            knight.setCursor(javafx.scene.Cursor.HAND);
+            knight.setScaleX(1.05);
+            knight.setScaleY(1.05);
+        });
+        knight.setOnMouseExited(e -> {
+            knight.setScaleX(1.0);
+            knight.setScaleY(1.0);
+        });
+
+        root.getChildren().add(knight);
+    }
+
+    /**
+     * Muestra advertencia de recursos insuficientes para crear caballero
+     */
+    private void showInsufficientResourcesForKnight() {
+        Stage warningStage = new Stage();
+        warningStage.initModality(Modality.APPLICATION_MODAL);
+        warningStage.initStyle(StageStyle.TRANSPARENT);
+        warningStage.setTitle("Recursos insuficientes");
+
+        VBox warningPanel = new VBox(15);
+        warningPanel.setPadding(new Insets(25, 30, 25, 30));
+        warningPanel.setAlignment(Pos.CENTER);
+        warningPanel.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.50); " +
+                        "-fx-background-radius: 15; " +
+                        "-fx-border-color: #c0392b; " + // Rojo para cuartel
+                        "-fx-border-width: 2; " +
+                        "-fx-border-radius: 15; " +
+                        "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0.5, 0, 2);"
+        );
+
+        Label warningIcon = new Label("⚔");
+        warningIcon.setStyle("-fx-font-size: 36px; -fx-padding: 0 0 5 0;");
+
+        VBox messageContainer = new VBox(5);
+        messageContainer.setAlignment(Pos.CENTER);
+
+        Label titleLabel = new Label("Recursos insuficientes");
+        titleLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #c0392b;");
+
+        Label detailLabel = new Label("Necesitas 50 Oro \npara crear un Caballero");
+        detailLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: ##000000; -fx-text-alignment: center;");
+        detailLabel.setWrapText(true);
+
+        messageContainer.getChildren().addAll(titleLabel, detailLabel);
+
+        Button okButton = new Button("Entendido");
+        okButton.setPrefWidth(150);
+        okButton.setPrefHeight(38);
+        okButton.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.5); " +
+                        "-fx-background-radius: 6; " +
+                        "-fx-border-color: #c0392b; " + // Rojo para cuartel
+                        "-fx-border-width: 2; " +
+                        "-fx-border-radius: 6; " +
+                        "-fx-cursor: hand; " +
+                        "-fx-text-fill: #2c3e50; " +
+                        "-fx-font-size: 12px; " +
+                        "-fx-font-weight: bold;"
+        );
+
+        okButton.setOnMouseEntered(e -> {
+            okButton.setStyle(
+                    "-fx-background-color: rgba(236, 240, 241, 0.5); " +
+                            "-fx-background-radius: 6; " +
+                            "-fx-border-color: #e74c3c; " +
+                            "-fx-border-width: 2.5; " +
+                            "-fx-border-radius: 6; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-text-fill: #2c3e50; " +
+                            "-fx-font-size: 12px; " +
+                            "-fx-font-weight: bold; " +
+                            "-fx-effect: dropshadow(gaussian, rgba(231, 76, 60, 0.3), 5, 0.5, 0, 1);"
+            );
+        });
+
+        okButton.setOnMouseExited(e -> {
+            okButton.setStyle(
+                    "-fx-background-color: rgba(255, 255, 255, 0.5); " +
+                            "-fx-background-radius: 6; " +
+                            "-fx-border-color: #c0392b; " +
+                            "-fx-border-width: 2; " +
+                            "-fx-border-radius: 6; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-text-fill: #2c3e50; " +
+                            "-fx-font-size: 12px; " +
+                            "-fx-font-weight: bold; " +
+                            "-fx-effect: null;"
+            );
+        });
+
+        okButton.setOnAction(e -> warningStage.close());
+
+        warningPanel.getChildren().addAll(warningIcon, messageContainer, okButton);
+
+        StackPane rootPane = new StackPane(warningPanel);
+        rootPane.setStyle("-fx-background-color: transparent;");
+        rootPane.setAlignment(Pos.CENTER);
+
+        Scene warningScene = new Scene(rootPane, 300, 250);
+        warningScene.setFill(Color.TRANSPARENT);
+
+        warningStage.initOwner(root.getScene().getWindow());
+        warningStage.setScene(warningScene);
+        warningStage.setResizable(false);
+        warningStage.showAndWait();
     }
 
     public static void main(String[] args) {
