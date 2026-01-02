@@ -1,6 +1,6 @@
  package dominion.menu;
-
-import dominion.model.territories.Territory;
+ import dominion.model.territories.Territory;
+ import dominion.model.buildings.TownHall;
 
 public abstract class Building {
     protected final String id;

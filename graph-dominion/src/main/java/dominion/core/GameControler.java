@@ -3,7 +3,7 @@ package dominion.core;
 import dominion.model.buildings.MilitaryBase;
 import dominion.model.players.Player;
 import dominion.model.territories.Territory;
-
+import dominion.model.units.Unit;
 import java.util.ArrayList;
 
 public class GameControler {
@@ -59,29 +59,15 @@ public class GameControler {
         return result;// devuelve Victoria o Derrota
     }
 
+    public void moveUnit(Unit unit, Territory destination) {
+        Territory origin = unit.getCurrentTerritory();
 
-
-
-
-
-    public boolean moveUnit(Unit unit, Territory from, Territory to) {
-        if (unit == null || from == null || to == null) {
-            return false; // <- antes estaba vacío
+        if (origin != null) {
+            origin.removeUnit(unit);
         }
 
-        if (!from.getUnits().contains(unit)) {
-            return false;
-        }
-
-        if (!gameMap.areAdjacent(from, to)) {
-            return false;
-        }
-
-        from.removeUnit(unit);
-        to.addUnit(unit);
-        unit.setCurrentTerritory(to);
-
-        return true;
+        destination.addUnit(unit);
+        unit.setCurrentTerritory(destination);
     }
 
 }
