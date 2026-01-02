@@ -53,6 +53,8 @@ public class GameApp extends Application {
     private Timer gameTimer;
     private StackPane pauseOverlay;
     private boolean isGamePaused = false;
+    private ImageView barracksView; // Para referencia del cuartel
+    private Popup barracksPopup;    // Para el menú del cuartel
 
     @Override
     public void start(Stage stage) {
@@ -92,6 +94,9 @@ public class GameApp extends Application {
 
         // 8. Añadir árboles
         addOrganicForest();
+
+        // NUEVO: 8.1 Añadir minas distribuidas
+        addMinesToMap();
 
         // 9. Crear unidades
         createUnitNextToTownHall("leñador", "minero.png", 50);
@@ -182,7 +187,8 @@ public class GameApp extends Application {
         resumeButton.setOnAction(e -> {
             hidePauseMenu();
             if (gameTimer != null) {
-                gameTimer.startTimer();
+                // NUEVO: Usar el método de reanudación del timer
+                gameTimer.resumeFromPauseMenu();
             }
         });
 
@@ -289,6 +295,10 @@ public class GameApp extends Application {
 
         isGamePaused = true;
 
+        if (gameTimer != null) {
+            gameTimer.pauseTimer(); // Esto desactivará el botón automáticamente
+        }
+
         // Crear overlay oscuro que cubra TODA la pantalla
         pauseOverlay = new StackPane();
 
@@ -381,6 +391,8 @@ public class GameApp extends Application {
                 pauseOverlay = null;
                 isGamePaused = false;
                 disableGameInteractions(false);
+
+                // NUEVO: No necesitamos reanudar aquí porque ya se hizo con el botón
                 System.out.println("▶ Juego reanudado");
             });
 
@@ -563,12 +575,8 @@ public class GameApp extends Application {
         );
 
         // Determinar color según el tipo de botón
-        if (originalText.contains("Iniciar") || originalText.contains("▶")) {
-            button.setStyle(button.getStyle() +
-                    "-fx-background-color: rgba(46, 204, 113, 0.7); " + // Verde
-                    "-fx-border-color: #27ae60;"
-            );
-        } else if (originalText.contains("Pausar") || originalText.contains("⏸")) {
+        // ELIMINADO: La condición para "Iniciar" o "▶"
+        if (originalText.contains("Pausar") || originalText.contains("⏸")) {
             button.setStyle(button.getStyle() +
                     "-fx-background-color: rgba(231, 76, 60, 0.7); " + // Rojo
                     "-fx-border-color: #c0392b;"
@@ -583,11 +591,8 @@ public class GameApp extends Application {
         // Efecto hover
         button.setOnMouseEntered(e -> {
             String currentStyle = button.getStyle();
-            if (originalText.contains("Iniciar") || originalText.contains("▶")) {
-                button.setStyle(currentStyle +
-                        "-fx-effect: dropshadow(gaussian, rgba(46, 204, 113, 0.5), 5, 0.5, 0, 1);"
-                );
-            } else if (originalText.contains("Pausar") || originalText.contains("⏸")) {
+            // ELIMINADO: La condición para "Iniciar" o "▶"
+            if (originalText.contains("Pausar") || originalText.contains("⏸")) {
                 button.setStyle(currentStyle +
                         "-fx-effect: dropshadow(gaussian, rgba(231, 76, 60, 0.5), 5, 0.5, 0, 1);"
                 );
@@ -720,7 +725,7 @@ public class GameApp extends Application {
 
             TownHall townHall1 = new TownHall("1", territory1, 100, 5);
             territory1.setTownHall(townHall1);
-            territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, 600);
+            territory1.getTownHall().getStoredResources().addResource(ResourceType.WOOD, 600);
 
             DropShadow glow = new DropShadow();
             glow.setColor(Color.rgb(255, 215, 0, 0.7));
@@ -1921,6 +1926,388 @@ public class GameApp extends Application {
 
         System.out.println("❌ El mapa está completamente lleno");
         return null;
+    }
+
+    /**
+     * Crea minas distribuidas aleatoriamente por el mapa
+     */
+    private void addMinesToMap() {
+        try {
+            Image mineImage = new Image("file:src/main/resources/images/Mina.png");
+            double mineSize = 45; // Tamaño de la mina
+
+            System.out.println("⛏ Creando 15 minas en el mapa...");
+
+            int minesCreated = 0;
+            int maxAttempts = 500; // Para evitar bucles infinitos
+
+            // Intentar crear 15 minas
+            while (minesCreated < 7 && maxAttempts > 0) {
+                double x = getRandomPosition(windowWidth, mineSize);
+                double y = getRandomPosition(windowHeight, mineSize);
+
+                // Verificar que no colisione con nada
+                if (!checkMineCollision(x, y, mineSize)) {
+                    createMine(mineImage, mineSize, x, y, minesCreated);
+                    minesCreated++;
+                }
+
+                maxAttempts--;
+            }
+
+            if (minesCreated < 15) {
+                System.out.println("⚠️ Solo se pudieron crear " + minesCreated + " minas (espacio insuficiente)");
+            } else {
+                System.out.println("✅ 15 minas creadas exitosamente!");
+            }
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al crear minas: " + e.getMessage());
+            createPlaceholderMines();
+        }
+    }
+
+    /**
+     * Genera una posición aleatoria dentro de los límites del mapa
+     */
+    private double getRandomPosition(double maxSize, double objectSize) {
+        double margin = 20; // Margen mínimo del borde
+        return margin + Math.random() * (maxSize - objectSize - margin * 2);
+    }
+
+    /**
+     * Verifica colisiones para una mina
+     */
+    private boolean checkMineCollision(double x, double y, double size) {
+        // Crear el área de la mina con un pequeño margen de seguridad
+        Rectangle mineBounds = new Rectangle(x - 5, y - 5, size + 10, size + 10);
+
+        // Verificar colisión con edificios existentes
+        for (ImageView building : placedBuildings) {
+            Rectangle buildingBounds = new Rectangle(
+                    building.getX(),
+                    building.getY(),
+                    building.getFitWidth(),
+                    building.getFitHeight()
+            );
+
+            if (mineBounds.intersects(buildingBounds.getBoundsInLocal())) {
+                return true;
+            }
+        }
+
+        // Verificar colisión con TownHall (si está en placedBuildings, sino verificar manualmente)
+        double townHallX = windowWidth * 0.3 + 100;
+        double townHallY = windowHeight * 0.4 + 100;
+        double townHallSize = 170;
+
+        Rectangle townHallBounds = new Rectangle(
+                townHallX,
+                townHallY,
+                townHallSize,
+                townHallSize
+        );
+
+        if (mineBounds.intersects(townHallBounds.getBoundsInLocal())) {
+            return true;
+        }
+
+        // Verificar colisión con árboles (buscar todos los ImageView que sean árboles)
+        for (Node node : root.getChildren()) {
+            if (node instanceof ImageView) {
+                ImageView imageView = (ImageView) node;
+
+                // Si es un árbol (identificado por ID o tamaño)
+                if (imageView.getId() != null && imageView.getId().startsWith("Arbol_")) {
+                    Rectangle treeBounds = new Rectangle(
+                            imageView.getX(),
+                            imageView.getY(),
+                            imageView.getFitWidth(),
+                            imageView.getFitHeight()
+                    );
+
+                    // Área de colisión ligeramente mayor para árboles
+                    Rectangle paddedTreeBounds = new Rectangle(
+                            treeBounds.getX() - 10,
+                            treeBounds.getY() - 10,
+                            treeBounds.getWidth() + 20,
+                            treeBounds.getHeight() + 20
+                    );
+
+                    if (mineBounds.intersects(paddedTreeBounds.getBoundsInLocal())) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Verificar colisión con unidades (mineros y leñadores)
+        for (Node node : root.getChildren()) {
+            if (node instanceof ImageView) {
+                ImageView imageView = (ImageView) node;
+
+                // Si es una unidad (tamaño 50x50)
+                if (imageView.getFitWidth() == 50 && imageView.getFitHeight() == 50) {
+                    if (imageView.getId() != null &&
+                            (imageView.getId().startsWith("minero_") ||
+                                    imageView.getId().startsWith("leñador_") ||
+                                    imageView.getId().startsWith("unidad_"))) {
+
+                        Rectangle unitBounds = new Rectangle(
+                                imageView.getX(),
+                                imageView.getY(),
+                                imageView.getFitWidth(),
+                                imageView.getFitHeight()
+                        );
+
+                        // Área de colisión mayor para unidades (evitar minas muy cerca)
+                        Rectangle paddedUnitBounds = new Rectangle(
+                                unitBounds.getX() - 15,
+                                unitBounds.getY() - 15,
+                                unitBounds.getWidth() + 30,
+                                unitBounds.getHeight() + 30
+                        );
+
+                        if (mineBounds.intersects(paddedUnitBounds.getBoundsInLocal())) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Verificar colisión con otras minas
+        for (Node node : root.getChildren()) {
+            if (node instanceof ImageView) {
+                ImageView imageView = (ImageView) node;
+
+                // Si es una mina (identificada por ID)
+                if (imageView.getId() != null && imageView.getId().startsWith("Mina_")) {
+                    Rectangle otherMineBounds = new Rectangle(
+                            imageView.getX(),
+                            imageView.getY(),
+                            imageView.getFitWidth(),
+                            imageView.getFitHeight()
+                    );
+
+                    // Evitar que las minas estén muy juntas
+                    Rectangle paddedMineBounds = new Rectangle(
+                            otherMineBounds.getX() - 30,
+                            otherMineBounds.getY() - 30,
+                            otherMineBounds.getWidth() + 60,
+                            otherMineBounds.getHeight() + 60
+                    );
+
+                    if (mineBounds.intersects(paddedMineBounds.getBoundsInLocal())) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Verificar que no esté demasiado cerca de los bordes
+        if (x < 20 || y < 20 ||
+                x + size > windowWidth - 20 ||
+                y + size > windowHeight - 20) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Crea una mina individual en una posición específica
+     */
+    private void createMine(Image mineImage, double size, double x, double y, int mineNumber) {
+        ImageView mineView = new ImageView(mineImage);
+
+        mineView.setFitWidth(size);
+        mineView.setFitHeight(size);
+        mineView.setPreserveRatio(true);
+        mineView.setX(x);
+        mineView.setY(y);
+        mineView.setId("Mina_" + mineNumber);
+
+        // Rotación aleatoria ligera
+        mineView.setRotate((Math.random() - 0.5) * 20);
+
+        // Efecto de sombra
+        DropShadow mineShadow = new DropShadow();
+        mineShadow.setColor(Color.rgb(139, 69, 19, 0.6)); // Color marrón para minas
+        mineShadow.setRadius(8);
+        mineShadow.setOffsetY(3);
+        mineView.setEffect(mineShadow);
+
+        // Hacer la mina interactiva
+        makeMineInteractive(mineView, "Mina " + (mineNumber + 1));
+
+        // Animación de aparición
+        FadeTransition fade = new FadeTransition(Duration.millis(500), mineView);
+        fade.setFromValue(0.0);
+        fade.setToValue(1.0);
+
+        ScaleTransition scale = new ScaleTransition(Duration.millis(500), mineView);
+        scale.setFromX(0.3);
+        scale.setFromY(0.3);
+        scale.setToX(1.0);
+        scale.setToY(1.0);
+
+        // Añadir a la escena
+        root.getChildren().add(mineView);
+
+        // Ejecutar animaciones
+        javafx.animation.ParallelTransition parallel =
+                new javafx.animation.ParallelTransition(fade, scale);
+        parallel.play();
+
+        System.out.println("⛏ Mina " + (mineNumber + 1) + " creada en: (" +
+                (int)x + ", " + (int)y + ")");
+    }
+
+    /**
+     * Hace una mina interactiva (clickeable)
+     */
+    private void makeMineInteractive(ImageView mineView, String mineName) {
+        mineView.setOnMouseClicked(event -> {
+            System.out.println("⛏ " + mineName + " clickeada");
+
+            // Efecto visual al hacer clic
+            FadeTransition flash = new FadeTransition(Duration.millis(150), mineView);
+            flash.setFromValue(1.0);
+            flash.setToValue(0.7);
+            flash.setAutoReverse(true);
+            flash.setCycleCount(2);
+            flash.play();
+
+            // Efecto de sacudida
+            TranslateTransition shake = new TranslateTransition(Duration.millis(50), mineView);
+            shake.setFromX(-3);
+            shake.setToX(3);
+            shake.setCycleCount(4);
+            shake.setAutoReverse(true);
+            shake.play();
+        });
+
+        mineView.setOnMouseEntered(e -> {
+            mineView.setCursor(javafx.scene.Cursor.HAND);
+            mineView.setScaleX(1.05);
+            mineView.setScaleY(1.05);
+
+            // Efecto de resaltado
+            DropShadow highlight = new DropShadow();
+            highlight.setColor(Color.rgb(255, 215, 0, 0.7)); // Color dorado para resaltar
+            highlight.setRadius(12);
+            mineView.setEffect(highlight);
+        });
+
+        mineView.setOnMouseExited(e -> {
+            mineView.setCursor(javafx.scene.Cursor.DEFAULT);
+            mineView.setScaleX(1.0);
+            mineView.setScaleY(1.0);
+
+            // Restaurar sombra normal
+            DropShadow normalShadow = new DropShadow();
+            normalShadow.setColor(Color.rgb(139, 69, 19, 0.6));
+            normalShadow.setRadius(8);
+            normalShadow.setOffsetY(3);
+            mineView.setEffect(normalShadow);
+        });
+    }
+
+    /**
+     * Crea minas placeholder si no se carga la imagen
+     */
+    private void createPlaceholderMines() {
+        System.out.println("⛏ Creando minas placeholder...");
+
+        double mineSize = 60;
+        int minesCreated = 0;
+
+        // Zonas predefinidas para colocar minas (evitando el centro)
+        double[][] zones = {
+                {windowWidth * 0.2, windowHeight * 0.2},  // Esquina superior izquierda
+                {windowWidth * 0.8, windowHeight * 0.2},  // Esquina superior derecha
+                {windowWidth * 0.2, windowHeight * 0.8},  // Esquina inferior izquierda
+                {windowWidth * 0.8, windowHeight * 0.8},  // Esquina inferior derecha
+                {windowWidth * 0.5, windowHeight * 0.15}, // Centro superior
+                {windowWidth * 0.15, windowHeight * 0.5}, // Centro izquierdo
+                {windowWidth * 0.85, windowHeight * 0.5}, // Centro derecho
+                {windowWidth * 0.5, windowHeight * 0.85}  // Centro inferior
+        };
+
+        for (double[] zone : zones) {
+            if (minesCreated >= 15) break;
+
+            // Crear 2 minas en cada zona
+            for (int i = 0; i < 2 && minesCreated < 15; i++) {
+                double x = zone[0] + (Math.random() - 0.5) * 100;
+                double y = zone[1] + (Math.random() - 0.5) * 100;
+
+                // Asegurar que esté dentro de los límites
+                x = Math.max(30, Math.min(x, windowWidth - mineSize - 30));
+                y = Math.max(30, Math.min(y, windowHeight - mineSize - 30));
+
+                // Verificar colisión simple
+                boolean hasCollision = false;
+                for (Node node : root.getChildren()) {
+                    if (node instanceof ImageView) {
+                        ImageView existing = (ImageView) node;
+                        if (Math.abs(existing.getX() - x) < mineSize &&
+                                Math.abs(existing.getY() - y) < mineSize) {
+                            hasCollision = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!hasCollision) {
+                    createPlaceholderMine(x, y, mineSize, minesCreated);
+                    minesCreated++;
+                }
+            }
+        }
+
+        System.out.println("✅ " + minesCreated + " minas placeholder creadas");
+    }
+
+    /**
+     * Crea una mina placeholder simple
+     */
+    private void createPlaceholderMine(double x, double y, double size, int mineNumber) {
+        // Círculo para la mina
+        javafx.scene.shape.Circle mineCircle = new javafx.scene.shape.Circle(size/2);
+        mineCircle.setCenterX(x + size/2);
+        mineCircle.setCenterY(y + size/2);
+        mineCircle.setFill(Color.rgb(101, 67, 33)); // Color marrón
+
+        // Detalle interior
+        javafx.scene.shape.Circle detail = new javafx.scene.shape.Circle(size/4);
+        detail.setCenterX(x + size/2);
+        detail.setCenterY(y + size/2);
+        detail.setFill(Color.rgb(66, 44, 22));
+
+        // Símbolo de pico
+        javafx.scene.text.Text pickaxe = new javafx.scene.text.Text("⛏");
+        pickaxe.setX(x + size/2 - 8);
+        pickaxe.setY(y + size/2 + 8);
+        pickaxe.setStyle("-fx-font-size: 16px; -fx-fill: gold;");
+
+        Pane mine = new Pane(mineCircle, detail, pickaxe);
+        mine.setId("MinaPlaceholder_" + mineNumber);
+
+        // Hacer interactiva
+        mine.setOnMouseClicked(e -> System.out.println("⛏ Mina " + (mineNumber + 1) + " clickeada"));
+        mine.setOnMouseEntered(e -> {
+            mine.setCursor(javafx.scene.Cursor.HAND);
+            mine.setScaleX(1.05);
+            mine.setScaleY(1.05);
+        });
+        mine.setOnMouseExited(e -> {
+            mine.setScaleX(1.0);
+            mine.setScaleY(1.0);
+        });
+
+        root.getChildren().add(mine);
     }
 
     public static void main(String[] args) {

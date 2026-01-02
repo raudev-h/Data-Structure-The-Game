@@ -19,6 +19,9 @@ public class Timer {
     private Button pauseClock;
     private VBox timerPanel;
 
+    // NUEVO: Atributo para controlar el estado manualmente
+    private boolean isManuallyPaused = false;
+
     // NUEVO: Añadir atributo para el listener
     private PauseListener pauseListener;
 
@@ -46,47 +49,51 @@ public class Timer {
     }
 
     private void createTimerPanel() {
-        // Botones
-        startClock = new Button("▶ Iniciar");
+        // Botones - CAMBIADO: Botón de pausa visible, inicio oculto
+        startClock = new Button("▶");
         startClock.setStyle("-fx-font-size: 14px; -fx-padding: 8px 16px; -fx-background-color: #2ecc71; -fx-text-fill: white;");
         startClock.setOnAction(actionEvent -> {
-            gameTimer.start();
-            setupTimer();
-            startClock.setDisable(true);
-            pauseClock.setDisable(false);
-            startClock.setStyle("-fx-background-color: #95a5a6; -fx-text-fill: #7f8c8d;");
-            pauseClock.setStyle("-fx-background-color: #e74c3c; -fx-text-fill: white;");
+            // Este botón ahora solo se usa internamente
+            if (!isManuallyPaused) {
+                gameTimer.start();
+                setupTimer();
+                updateButtonStates();
 
-            // NUEVO: Notificar reanudación
-            if (pauseListener != null) {
-                pauseListener.onResume();
+                // NUEVO: Notificar reanudación
+                if (pauseListener != null) {
+                    pauseListener.onResume();
+                }
             }
         });
+
+        // Inicialmente no visible
+        startClock.setVisible(false);
+        startClock.setManaged(false);
 
         pauseClock = new Button("⏸ Pausar");
         pauseClock.setStyle("-fx-font-size: 14px; -fx-padding: 8px 16px; -fx-background-color: #e74c3c; -fx-text-fill: white;");
         pauseClock.setOnAction(actionEvent -> {
-            gameTimer.pause();
-            if (updateClock != null) {
-                updateClock.stop();
-            }
-            startClock.setDisable(false);
-            pauseClock.setDisable(true);
-            startClock.setStyle("-fx-background-color: #2ecc71; -fx-text-fill: white;");
-            pauseClock.setStyle("-fx-background-color: #95a5a6; -fx-text-fill: #7f8c8d;");
+            if (!isManuallyPaused) {
+                pauseClock.setDisable(true);
+                pauseClock.setStyle("-fx-background-color: #95a5a6; -fx-text-fill: #7f8c8d;");
+                isManuallyPaused = true;
 
-            // NUEVO: Notificar pausa
-            if (pauseListener != null) {
-                pauseListener.onPause();
+                gameTimer.pause();
+                if (updateClock != null) {
+                    updateClock.stop();
+                }
+
+                // NUEVO: Notificar pausa
+                if (pauseListener != null) {
+                    pauseListener.onPause();
+                }
             }
         });
-        pauseClock.setDisable(true);
-        pauseClock.setStyle("-fx-background-color: #95a5a6; -fx-text-fill: #7f8c8d;");
 
-        // Layout de botones
+        // Layout de botones - SOLO mostrar el botón de pausa
         HBox buttonBox = new HBox(10);
         buttonBox.setAlignment(Pos.CENTER);
-        buttonBox.getChildren().addAll(startClock, pauseClock);
+        buttonBox.getChildren().addAll(pauseClock);
 
         // Panel principal del timer
         timerPanel = new VBox(10);
@@ -117,18 +124,50 @@ public class Timer {
         timeLabel.setText(gameTimer.getTime());
     }
 
+    // NUEVO: Actualizar estados de los botones
+    private void updateButtonStates() {
+        if (isManuallyPaused) {
+            pauseClock.setDisable(true);
+            pauseClock.setStyle("-fx-background-color: #95a5a6; -fx-text-fill: #7f8c8d;");
+        } else {
+            pauseClock.setDisable(false);
+            pauseClock.setStyle("-fx-background-color: #e74c3c; -fx-text-fill: white;");
+        }
+    }
+
     // Devuelve solo el panel del timer
     public VBox getTimerPanel() {
         return timerPanel;
     }
 
-    // Métodos para control desde fuera si los necesitas
+    // Métodos para control desde fuera
     public void startTimer() {
-        startClock.fire();
+        // Iniciar el timer automáticamente
+        gameTimer.start();
+        setupTimer();
+        isManuallyPaused = false;
+        updateButtonStates();
     }
 
     public void pauseTimer() {
-        pauseClock.fire();
+        if (!isManuallyPaused) {
+            pauseClock.fire();
+        }
+    }
+
+    // NUEVO: Método para reanudar desde el menú de pausa
+    public void resumeFromPauseMenu() {
+        isManuallyPaused = false;
+        updateButtonStates();
+
+        // Solo reanudar si estaba en marcha
+        if (gameTimer != null && !gameTimer.getIsRunning()) {
+            gameTimer.start();
+        }
+
+        if (updateClock != null) {
+            updateClock.play();
+        }
     }
 
     public String getCurrentTime() {
@@ -152,7 +191,6 @@ public class Timer {
                             "-fx-border-radius: 6;"
             );
         } else if (scaleFactor > 1.2) {
-
             timerPanel.setStyle(
                     "-fx-background-color: rgba(0, 0, 0, 0.7); " +
                             "-fx-padding: 15px 20px; " +
@@ -167,6 +205,6 @@ public class Timer {
 
     // NUEVO: Método para verificar si está pausado
     public boolean isPaused() {
-        return !startClock.isDisabled();
+        return isManuallyPaused;
     }
 }
