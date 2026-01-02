@@ -57,6 +57,8 @@ public class GameApp extends Application {
     private Timeline constructionUpdateTimeline;
     private final Map<String, Position> buildingPositions = new HashMap<>();
 
+    private BarraProgresoAnimadaManager barraProgresoManager = new BarraProgresoAnimadaManager();
+
 
 
     @Override
@@ -355,23 +357,30 @@ public class GameApp extends Application {
         if (constructionView != null) {
             System.out.println("🏗️ Completando construcción visualmente: " + buildingId + " - " + buildingType);
 
+
+            // Detener y eliminar la barra de progreso animada
+            barraProgresoManager.eliminarBarraProgreso(buildingId);
+
             double x = constructionView.getX();
             double y = constructionView.getY();
             double width = constructionView.getFitWidth();
             double height = constructionView.getFitHeight();
 
-            // Primero remover la visualización de construcción
+            // PRIMERO: Eliminar la barra de progreso si existe
+            eliminarBarraProgreso(buildingId, constructionView);
+
+            // SEGUNDO: Remover la visualización de construcción
             root.getChildren().remove(constructionView);
 
-            // Limpiar referencias
+            // TERCERO: Limpiar referencias
             constructionVisuals.remove(buildingId);
             buildingTypesUnderConstruction.remove(buildingId);
             buildingPositions.remove(buildingId);
 
-            // Crear el edificio final
+            // CUARTO: Crear el edificio final
             createFinalBuilding(x, y, width, height, buildingType);
 
-            // Actualizar recursos si es necesario
+            // QUINTO: Actualizar recursos si es necesario
             updateResourceDisplay();
 
             System.out.println("✅ Construcción completada visualmente: " + buildingType);
@@ -380,6 +389,25 @@ public class GameApp extends Application {
         }
     }
 
+    private void eliminarBarraProgreso(String buildingId, ImageView constructionView) {
+        // Buscar y eliminar la barra de progreso asociada
+        Node barraProgreso = null;
+
+        for (Node node : root.getChildren()) {
+            if (node instanceof Pane progressPane) {
+                if (progressPane.getId() != null &&
+                        progressPane.getId().equals("progress_" + constructionView.hashCode())) {
+                    barraProgreso = node;
+                    break;
+                }
+            }
+        }
+
+        if (barraProgreso != null) {
+            root.getChildren().remove(barraProgreso);
+            System.out.println("🗑️ Barra de progreso eliminada para: " + buildingId);
+        }
+    }
     // Método para calcular progreso de construcción (versión simplificada)
     private double calculateConstructionProgress(ConstructionOrder order) {
         if (order == null) return 0.0;
@@ -572,7 +600,6 @@ public class GameApp extends Application {
         return 30; // Por defecto
     }
 
-    // Método para actualizar progreso visual
     private void updateConstructionProgress(ImageView constructionView, double progress) {
         // Cambiar la opacidad según el progreso (más opaco a medida que avanza)
         double minOpacity = 0.3;
@@ -580,68 +607,6 @@ public class GameApp extends Application {
         double currentOpacity = minOpacity + (progress * (maxOpacity - minOpacity));
         constructionView.setOpacity(currentOpacity);
 
-        // Si quieres agregar una barra de progreso visual:
-        updateProgressBarOnConstruction(constructionView, progress);
-    }
-
-    // Método para actualizar barra de progreso (opcional)
-    private void updateProgressBarOnConstruction(ImageView constructionView, double progress) {
-        // Buscar si ya tiene una barra de progreso
-        for (Node child : root.getChildren()) {
-            if (child instanceof Pane progressPane) {
-                if (progressPane.getId() != null &&
-                        progressPane.getId().equals("progress_" + constructionView.hashCode())) {
-
-                    // Actualizar la barra existente
-                    updateExistingProgressBar(progressPane, progress);
-                    return;
-                }
-            }
-        }
-
-        // Crear nueva barra de progreso si no existe
-        if (progress > 0 && progress < 1) {
-            createProgressBarForConstruction(constructionView, progress);
-        }
-    }
-
-    // Método para crear barra de progreso
-    private void createProgressBarForConstruction(ImageView constructionView, double progress) {
-        double x = constructionView.getX();
-        double y = constructionView.getY();
-        double width = constructionView.getFitWidth();
-
-        // Fondo de la barra
-        Rectangle background = new Rectangle(width, 5);
-        background.setFill(Color.rgb(100, 100, 100, 0.7));
-        background.setX(x);
-        background.setY(y - 10);
-
-        // Barra de progreso
-        Rectangle progressBar = new Rectangle(width * progress, 5);
-        progressBar.setFill(Color.rgb(0, 200, 0, 0.8));
-        progressBar.setX(x);
-        progressBar.setY(y - 10);
-
-        Pane progressPane = new Pane(background, progressBar);
-        progressPane.setId("progress_" + constructionView.hashCode());
-
-        root.getChildren().add(progressPane);
-    }
-
-    // Método para actualizar barra de progreso existente
-    private void updateExistingProgressBar(Pane progressPane, double progress) {
-        for (Node node : progressPane.getChildren()) {
-            if (node instanceof Rectangle rect && rect.getFill().equals(Color.rgb(0, 200, 0, 0.8))) {
-                double currentWidth = rect.getWidth();
-                double newWidth = rect.getParent().getBoundsInParent().getWidth() * progress;
-
-                if (Math.abs(currentWidth - newWidth) > 1) {
-                    rect.setWidth(newWidth);
-                }
-                break;
-            }
-        }
     }
 
     // Método para añadir edificio completado a la lista del backend
@@ -708,7 +673,6 @@ public class GameApp extends Application {
         return false;
     }
 
-    // Método para mostrar una construcción en progreso
     private void showConstructionInProgress(double x, double y, double width, double height,
                                             String buildingType, String constructionId) {
         try {
@@ -720,23 +684,19 @@ public class GameApp extends Application {
             constructionView.setPreserveRatio(true);
             constructionView.setX(x);
             constructionView.setY(y);
-            constructionView.setOpacity(0.5); // 50% de opacidad
+            constructionView.setOpacity(0.5);
             constructionView.setId("construction_" + constructionId);
 
-            // Animación de pulsación para indicar construcción activa
-            FadeTransition pulse = new FadeTransition(Duration.seconds(1.5), constructionView);
-            pulse.setFromValue(0.4);
-            pulse.setToValue(0.6);
-            pulse.setCycleCount(Timeline.INDEFINITE);
-            pulse.setAutoReverse(true);
-            pulse.play();
+            // Obtener tiempo de construcción según el tipo
+            int tiempoConstruccion = getTotalBuildTimeForType(buildingType);
 
-            // Añadir sombra
-            DropShadow shadow = new DropShadow();
-            shadow.setColor(Color.rgb(139, 69, 19, 0.5)); // Color marrón para construcción
-            shadow.setRadius(10);
-            shadow.setSpread(0.1);
-            constructionView.setEffect(shadow);
+            // Crear barra de progreso ANIMADA
+            barraProgresoManager.crearBarraProgresoAnimada(
+                    constructionId, constructionView, tiempoConstruccion
+            );
+
+            // Iniciar animación inmediatamente
+            barraProgresoManager.iniciarAnimacion(constructionId);
 
             // Guardar referencia
             constructionVisuals.put(constructionId, constructionView);
@@ -745,15 +705,11 @@ public class GameApp extends Application {
             // Añadir a la escena
             root.getChildren().add(constructionView);
 
-            // Crear barra de progreso
-            createProgressBarForConstruction(constructionView, 0.0);
-
-            System.out.println("🚧 Mostrando construcción en progreso para: " + buildingType +
-                    " en: (" + (int)x + ", " + (int)y + ") ID: " + constructionId);
+            System.out.println("🚧 Mostrando construcción en progreso: " + buildingType +
+                    " - Tiempo: " + tiempoConstruccion + "s - ID: " + constructionId);
 
         } catch (Exception e) {
             System.err.println("❌ Error al mostrar construcción en progreso: " + e.getMessage());
-            e.printStackTrace();
         }
     }
 
@@ -1810,6 +1766,10 @@ public class GameApp extends Application {
      */
     private void disableGameInteractions(boolean disable) {
         if (disable) {
+            // Pausar todas las animaciones de barras
+            for (String buildingId : constructionVisuals.keySet()) {
+                barraProgresoManager.pausarAnimacion(buildingId);
+            }
             // Deshabilitar TODOS los elementos del root excepto el overlay de pausa
             for (int i = 0; i < root.getChildren().size(); i++) {
                 Node node = root.getChildren().get(i);
@@ -1848,6 +1808,10 @@ public class GameApp extends Application {
                 pauseOverlay.toFront();
             }
         } else {
+            // Reanudar todas las animaciones de barras
+            for (String buildingId : constructionVisuals.keySet()) {
+                barraProgresoManager.reanudarAnimacion(buildingId);
+            }
             // Rehabilitar todos los elementos
             for (Node node : root.getChildren()) {
                 node.setMouseTransparent(false);
@@ -3884,6 +3848,133 @@ public class GameApp extends Application {
         warningStage.setScene(warningScene);
         warningStage.setResizable(false);
         warningStage.showAndWait();
+    }
+
+    //METODOS DE LA BARRA DE CONSTRUCCION =========
+    private class BarraProgresoAnimadaManager {
+        private final Map<String, ProgressBarData> barrasPorConstruccion = new HashMap<>();
+
+        private class ProgressBarData {
+            Pane contenedor;
+            Rectangle barraProgreso;
+            Rectangle fondo;
+            Timeline animacion;
+            double progresoActual = 0.0;
+            double duracionTotal; // en segundos
+        }
+
+        public void crearBarraProgresoAnimada(String buildingId, ImageView constructionView, int tiempoConstruccionSegundos) {
+            if (barrasPorConstruccion.containsKey(buildingId)) {
+                return; // Ya existe
+            }
+
+            double x = constructionView.getX();
+            double y = constructionView.getY();
+            double width = constructionView.getFitWidth();
+            double alturaBarra = 6;
+            double barraY = y - alturaBarra - 5;
+
+            // Crear datos de la barra
+            ProgressBarData data = new ProgressBarData();
+            data.duracionTotal = tiempoConstruccionSegundos;
+
+            // Fondo de la barra
+            data.fondo = new Rectangle(width, alturaBarra);
+            data.fondo.setFill(Color.rgb(100, 100, 100, 0.7));
+            data.fondo.setX(x);
+            data.fondo.setY(barraY);
+            data.fondo.setArcWidth(3);
+            data.fondo.setArcHeight(3);
+
+            // Barra de progreso (empieza en 0)
+            data.barraProgreso = new Rectangle(0, alturaBarra);
+            data.barraProgreso.setFill(Color.rgb(0, 200, 0, 0.8));
+            data.barraProgreso.setX(x);
+            data.barraProgreso.setY(barraY);
+            data.barraProgreso.setArcWidth(3);
+            data.barraProgreso.setArcHeight(3);
+
+            // Contenedor
+            data.contenedor = new Pane(data.fondo, data.barraProgreso);
+            data.contenedor.setId("progress_" + buildingId);
+
+            // Crear animación suave
+            data.animacion = new Timeline(
+                    new KeyFrame(Duration.ZERO, new KeyValue(data.barraProgreso.widthProperty(), 0)),
+                    new KeyFrame(Duration.seconds(tiempoConstruccionSegundos),
+                            new KeyValue(data.barraProgreso.widthProperty(), width))
+            );
+
+            // Actualizar color durante la animación
+            data.animacion.currentTimeProperty().addListener((obs, oldTime, newTime) -> {
+                double progreso = newTime.toSeconds() / tiempoConstruccionSegundos;
+                data.progresoActual = progreso;
+                actualizarColorBarra(data.barraProgreso, progreso);
+            });
+
+            // Configurar animación
+            data.animacion.setCycleCount(1); // Solo una vez
+
+            barrasPorConstruccion.put(buildingId, data);
+            root.getChildren().add(data.contenedor);
+            data.contenedor.toFront();
+
+            System.out.println("📊 Barra animada creada para " + buildingId +
+                    " - Duración: " + tiempoConstruccionSegundos + "s");
+        }
+
+        private void actualizarColorBarra(Rectangle barra, double progreso) {
+            if (progreso >= 1.0) {
+                barra.setFill(Color.rgb(0, 255, 0, 1.0)); // Verde brillante al 100%
+            } else if (progreso >= 0.75) {
+                barra.setFill(Color.rgb(0, 200, 0, 0.8)); // Verde
+            } else if (progreso >= 0.5) {
+                barra.setFill(Color.rgb(255, 165, 0, 0.8)); // Naranja
+            } else {
+                barra.setFill(Color.rgb(255, 0, 0, 0.8)); // Rojo
+            }
+        }
+
+        public void iniciarAnimacion(String buildingId) {
+            ProgressBarData data = barrasPorConstruccion.get(buildingId);
+            if (data != null && data.animacion != null) {
+                data.animacion.play();
+                System.out.println("▶️ Iniciando animación de barra para: " + buildingId);
+            }
+        }
+
+        public void pausarAnimacion(String buildingId) {
+            ProgressBarData data = barrasPorConstruccion.get(buildingId);
+            if (data != null && data.animacion != null) {
+                data.animacion.pause();
+                System.out.println("⏸️ Pausando animación de barra para: " + buildingId);
+            }
+        }
+
+        public void reanudarAnimacion(String buildingId) {
+            ProgressBarData data = barrasPorConstruccion.get(buildingId);
+            if (data != null && data.animacion != null &&
+                    data.animacion.getStatus() == Animation.Status.PAUSED) {
+                data.animacion.play();
+                System.out.println("▶️ Reanudando animación de barra para: " + buildingId);
+            }
+        }
+
+        public void eliminarBarraProgreso(String buildingId) {
+            ProgressBarData data = barrasPorConstruccion.remove(buildingId);
+            if (data != null) {
+                if (data.animacion != null) {
+                    data.animacion.stop();
+                }
+                root.getChildren().remove(data.contenedor);
+                System.out.println("🗑️ Barra animada eliminada: " + buildingId);
+            }
+        }
+
+        public double obtenerProgresoActual(String buildingId) {
+            ProgressBarData data = barrasPorConstruccion.get(buildingId);
+            return data != null ? data.progresoActual : 0.0;
+        }
     }
 
     public static void main(String[] args) {
