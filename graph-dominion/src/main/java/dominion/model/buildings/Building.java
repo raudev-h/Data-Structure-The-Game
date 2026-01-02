@@ -1,5 +1,4 @@
 package dominion.model.buildings;
-
 import dominion.model.territories.Territory;
 
 public abstract class Building {
