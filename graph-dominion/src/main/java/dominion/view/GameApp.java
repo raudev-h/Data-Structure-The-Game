@@ -202,94 +202,391 @@ public class GameApp extends Application {
         System.out.println("🔄 Sincronizando construcciones...");
         System.out.println("📋 Construcciones en cola backend: " + constructionQueue.size());
 
-        // Si NO hay construcciones en cola, detener el Timeline
-        if (constructionQueue.isEmpty() && constructionVisuals.isEmpty()) {
-            System.out.println("⏹️ No hay construcciones activas. Deteniendo sincronización...");
-            if (constructionUpdateTimeline != null) {
-                constructionUpdateTimeline.stop();
+        // PASO 1: BUSCAR Y COMPLETAR CONSTRUCCIONES TERMINADAS INMEDIATAMENTE
+        for (ConstructionOrder order : constructionQueue) {
+            if (order.getRemainingTime() <= 0) {
+                String buildingId = order.getBuildingId();
+                String buildingType = order.getType().toString();
+                String displayBuildingType = getBuildingTypeForImage(buildingType);
+
+                System.out.println("🔥 ¡TIEMPO TERMINADO! Completando ahora mismo: " + buildingId);
+
+                // FORZAR completar la construcción
+                forceCompleteConstruction(buildingId, displayBuildingType);
+
+                // Salir después de completar la primera (solo una puede estar terminada)
+                break;
             }
+        }
+
+        // PASO 2: Actualizar construcción activa (si hay)
+        if (!constructionQueue.isEmpty()) {
+            ConstructionOrder activeConstruction = constructionQueue.peekFirst();
+
+            // Solo si la construcción activa aún tiene tiempo
+            if (activeConstruction != null && activeConstruction.getRemainingTime() > 0) {
+                System.out.println("🎯 Construcción activa: " + activeConstruction.getType() +
+                        " ID: " + activeConstruction.getBuildingId() +
+                        " Tiempo restante: " + activeConstruction.getRemainingTime());
+
+                updateActiveConstruction(activeConstruction);
+            }
+        }
+
+        // PASO 3: Verificar construcciones huérfanas (terminadas pero aún en visualización)
+        checkOrphanedConstructions();
+    }
+
+    private void forceCompleteConstruction(String buildingId, String buildingType) {
+        System.out.println("⚡⚡⚡ FORZANDO COMPLETACIÓN DE CONSTRUCCIÓN ⚡⚡⚡");
+        System.out.println("ID: " + buildingId);
+        System.out.println("Tipo: " + buildingType);
+
+        // Opción 1: Usar completeConstructionNow si existe la vista
+        ImageView constructionView = constructionVisuals.get(buildingId);
+        if (constructionView != null) {
+            System.out.println("✅ Usando vista existente");
+            completeConstructionNow(buildingId, buildingType);
             return;
         }
 
-        // PRIMERO: Procesar construcciones que están en el backend
-        processBackendConstructions(constructionQueue);
+        // Opción 2: Crear desde cero en posición por defecto
+        System.out.println("⚠️ No hay vista, creando desde cero");
 
-        // SEGUNDO: Verificar si hay construcciones visuales que YA NO están en el backend
-        verificarConstruccionesCompletadasYRemovidas(constructionQueue);
-    }
-
-
-
-
-
-    private void verificarConstruccionesCompletadasYRemovidas(Deque<ConstructionOrder> constructionQueue) {
-        // Crear lista de IDs que están en el backend
-        Set<String> idsEnBackend = new HashSet<>();
-        for (ConstructionOrder order : constructionQueue) {
-            idsEnBackend.add(order.getBuildingId());
+        // Buscar posición guardada
+        double x, y;
+        if (buildingPositions.containsKey(buildingId)) {
+            Position pos = buildingPositions.get(buildingId);
+            x = pos.x;
+            y = pos.y;
+            System.out.println("📍 Usando posición guardada: " + x + ", " + y);
+        } else {
+            // Posición por defecto cerca del TownHall
+            x = windowWidth * 0.5;
+            y = windowHeight * 0.5;
+            System.out.println("📍 Usando posición por defecto: " + x + ", " + y);
         }
 
-        // Verificar construcciones visuales que ya no están en el backend
-        List<String> construccionesACompletar = new ArrayList<>();
+        // Tamaño según el tipo
+        double width = getBuildingWidth(buildingType);
+        double height = getBuildingHeight(buildingType);
+
+        // Crear la casa INMEDIATAMENTE sin animaciones
+        createHouseNow(x, y, width, height);
+
+        // Limpiar referencias
+        constructionVisuals.remove(buildingId);
+        buildingTypesUnderConstruction.remove(buildingId);
+        buildingPositions.remove(buildingId);
+        barraProgresoManager.eliminarBarraProgreso(buildingId);
+
+        System.out.println("✅ ¡CASA CREADA POR FUERZA!");
+    }
+
+    private void createHouseNow(double x, double y, double width, double height) {
+        try {
+            System.out.println("🏠 CREANDO CASA AHORA en " + x + ", " + y);
+
+            // Intenta cargar la imagen de la casa
+            Image houseImage = new Image("file:src/main/resources/images/casa.png");
+            ImageView houseView = new ImageView(houseImage);
+
+            houseView.setFitWidth(width);
+            houseView.setFitHeight(height);
+            houseView.setPreserveRatio(true);
+            houseView.setX(x);
+            houseView.setY(y);
+
+            // ID único
+            houseView.setId("Casa_" + System.currentTimeMillis());
+
+            // Efecto de sombra simple
+            DropShadow shadow = new DropShadow();
+            shadow.setColor(Color.rgb(0, 0, 0, 0.5));
+            shadow.setRadius(10);
+            houseView.setEffect(shadow);
+
+            // Añadir a la escena INMEDIATAMENTE
+            root.getChildren().add(houseView);
+
+            // Añadir a la lista de edificios
+            placedBuildings.add(houseView);
+
+            // Hacerla interactiva
+            makeBuildingInteractive(houseView, "Casa");
+
+            System.out.println("✅ ¡CASA CREADA EXITOSAMENTE!");
+
+        } catch (Exception e) {
+            System.err.println("❌ Error creando casa: " + e.getMessage());
+
+            // Crear un placeholder SI FALLA
+            Rectangle placeholder = new Rectangle(width, height, Color.BROWN);
+            placeholder.setX(x);
+            placeholder.setY(y);
+            placeholder.setStroke(Color.YELLOW);
+            placeholder.setStrokeWidth(2);
+
+            Label label = new Label("CASA");
+            label.setLayoutX(x + width/2 - 20);
+            label.setLayoutY(y + height/2 - 10);
+            label.setTextFill(Color.WHITE);
+
+            Pane housePane = new Pane(placeholder, label);
+            root.getChildren().add(housePane);
+
+            System.out.println("⚠️ Creado placeholder para casa");
+        }
+    }
+
+    private void checkOrphanedConstructions() {
+        // Verificar si hay construcciones visuales que ya no están en el backend
+        if (territory1 == null || territory1.getTownHall() == null) return;
+
+        Deque<ConstructionOrder> constructionQueue = territory1.getTownHall().getConstructionQueue();
+
+        List<String> toRemove = new ArrayList<>();
 
         for (String buildingId : constructionVisuals.keySet()) {
-            if (!idsEnBackend.contains(buildingId)) {
-                // Esta construcción ya no está en el backend, debe estar completada
-                construccionesACompletar.add(buildingId);
+            boolean foundInBackend = false;
+
+            for (ConstructionOrder order : constructionQueue) {
+                if (order.getBuildingId().equals(buildingId)) {
+                    foundInBackend = true;
+                    break;
+                }
+            }
+
+            // Si no está en el backend pero SÍ está en visualización, FORZAR completar
+            if (!foundInBackend) {
+                System.out.println("👻 Construcción huérfana encontrada: " + buildingId);
+                String buildingType = buildingTypesUnderConstruction.get(buildingId);
+
+                if (buildingType != null) {
+                    System.out.println("⚡ Forzando completar construcción huérfana: " + buildingType);
+                    forceCompleteConstruction(buildingId, buildingType);
+                } else {
+                    toRemove.add(buildingId);
+                }
             }
         }
 
-        // Completar las construcciones que ya terminaron
-        for (String buildingId : construccionesACompletar) {
-            String buildingType = buildingTypesUnderConstruction.get(buildingId);
-            if (buildingType != null) {
-                System.out.println("🏗️ Completando construcción fuera de cola: " + buildingId + " - " + buildingType);
-                completeConstructionNow(buildingId, buildingType);
-            }
+        // Limpiar
+        for (String buildingId : toRemove) {
+            ImageView view = constructionVisuals.remove(buildingId);
+            if (view != null) root.getChildren().remove(view);
+            buildingTypesUnderConstruction.remove(buildingId);
+            buildingPositions.remove(buildingId);
         }
     }
 
-    private void processBackendConstructions(Deque<ConstructionOrder> constructionQueue) {
+    private void updateWaitingConstructions(Deque<ConstructionOrder> constructionQueue,
+                                            ConstructionOrder activeConstruction) {
+        if (activeConstruction == null) return;
+
+        String activeId = activeConstruction.getBuildingId();
+
+        // Procesar todas las construcciones en cola excepto la activa
         for (ConstructionOrder order : constructionQueue) {
             String buildingId = order.getBuildingId();
-            String backendBuildingType = order.getType().toString();
-            String displayBuildingType = getBuildingTypeForImage(backendBuildingType);
-            int remainingTime = order.getRemainingTime();
 
-            System.out.println("📝 Procesando construcción activa: " + displayBuildingType +
-                    " ID: " + buildingId +
-                    " Tiempo restante: " + remainingTime);
+            if (!buildingId.equals(activeId)) { // Solo las que están en espera
+                // Si ya existe una visualización, asegurarse de que NO tenga barra de progreso
+                if (constructionVisuals.containsKey(buildingId)) {
+                    // Eliminar cualquier barra de progreso existente
+                    barraProgresoManager.eliminarBarraProgreso(buildingId);
 
-            // Si no tenemos una visualización para esta construcción, crearla
-            if (!constructionVisuals.containsKey(buildingId)) {
-                // Obtener posición
-                double x = getConstructionPositionX(buildingId);
-                double y = getConstructionPositionY(buildingId);
-                double width = getBuildingWidth(displayBuildingType);
-                double height = getBuildingHeight(displayBuildingType);
+                    // Mostrar como "en espera" (menos opaco)
+                    ImageView constructionView = constructionVisuals.get(buildingId);
+                    if (constructionView != null) {
+                        constructionView.setOpacity(0.3); // Muy transparente para indicar espera
 
-                // Mostrar construcción en progreso
-                showConstructionInProgress(x, y, width, height, displayBuildingType, buildingId);
+                        // Añadir texto "En espera" si no existe
+                        addWaitingText(constructionView, buildingId);
+                    }
+                } else {
+                    // Si no existe visualización, crear una indicando que está en espera
+                    String displayBuildingType = getBuildingTypeForImage(order.getType().toString());
+                    double x = getConstructionPositionX(buildingId);
+                    double y = getConstructionPositionY(buildingId);
+                    double width = getBuildingWidth(displayBuildingType);
+                    double height = getBuildingHeight(displayBuildingType);
 
-                System.out.println("🚧 Nueva construcción visual creada para: " + displayBuildingType);
-            }
-
-            // Actualizar progreso
-            ImageView constructionView = constructionVisuals.get(buildingId);
-            if (constructionView != null) {
-                double progress = calculateConstructionProgress(order);
-                updateConstructionProgress(constructionView, progress);
-
-                // SI EL TIEMPO ES 0 O MENOS, COMPLETAR INMEDIATAMENTE
-                if (remainingTime <= 0) {
-                    System.out.println("⏰ ¡Tiempo completado! Reemplazando construcción: " + buildingId);
-                    completeConstructionNow(buildingId, displayBuildingType);
+                    showWaitingConstruction(x, y, width, height, displayBuildingType, buildingId);
                 }
             }
         }
     }
 
+    private void checkAndFixActiveConstructions(Deque<ConstructionOrder> constructionQueue) {
+        if (constructionQueue.isEmpty()) return;
 
+        ConstructionOrder activeOrder = constructionQueue.peekFirst();
+        if (activeOrder == null) return;
+
+        String activeId = activeOrder.getBuildingId();
+
+        // Verificar si la construcción activa tiene barra de progreso
+        if (constructionVisuals.containsKey(activeId)) {
+            ImageView constructionView = constructionVisuals.get(activeId);
+
+            // Verificar si tiene barra de progreso
+            double progresoActual = barraProgresoManager.obtenerProgresoActual(activeId);
+            boolean tieneBarra = progresoActual > 0;
+
+            // Si no tiene barra de progreso pero debería tenerla
+            if (!tieneBarra) {
+                System.out.println("🔧 Reparando construcción activa sin barra: " + activeId);
+
+                // Crear barra de progreso
+                String buildingType = buildingTypesUnderConstruction.get(activeId);
+                if (buildingType != null) {
+                    int totalTime = getTotalBuildTimeForType(buildingType);
+                    int remainingTime = activeOrder.getRemainingTime();
+                    int tiempoTranscurrido = totalTime - remainingTime;
+
+                    barraProgresoManager.crearBarraProgresoAnimada(
+                            activeId, constructionView, totalTime
+                    );
+
+                    if (tiempoTranscurrido > 0) {
+                        barraProgresoManager.iniciarAnimacionDesde(activeId, tiempoTranscurrido);
+                    } else {
+                        barraProgresoManager.iniciarAnimacion(activeId);
+                    }
+
+                    constructionView.setOpacity(0.7);
+                    removeWaitingText(activeId);
+                }
+            }
+        }
+    }
+
+    private void showWaitingConstruction(double x, double y, double width, double height,
+                                         String buildingType, String constructionId) {
+        try {
+            Image constructionImage = new Image("file:src/main/resources/images/Construccion.png");
+            ImageView constructionView = new ImageView(constructionImage);
+
+            constructionView.setFitWidth(width);
+            constructionView.setFitHeight(height);
+            constructionView.setPreserveRatio(true);
+            constructionView.setX(x);
+            constructionView.setY(y);
+            constructionView.setOpacity(0.3); // Muy transparente para indicar espera
+            constructionView.setId("waiting_" + constructionId);
+
+            // NO crear barra de progreso
+            // Solo mostrar un indicador visual de "en espera"
+            addWaitingText(constructionView, constructionId);
+
+            // Guardar referencia
+            constructionVisuals.put(constructionId, constructionView);
+            buildingTypesUnderConstruction.put(constructionId, buildingType);
+
+            // Añadir a la escena
+            root.getChildren().add(constructionView);
+
+            System.out.println("⏳ Mostrando construcción EN ESPERA: " + buildingType +
+                    " - ID: " + constructionId);
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al mostrar construcción en espera: " + e.getMessage());
+        }
+    }
+
+    private void addWaitingText(ImageView constructionView, String constructionId) {
+        // Buscar si ya existe un texto de espera
+        for (Node node : root.getChildren()) {
+            if (node instanceof Label label && label.getId() != null &&
+                    label.getId().equals("waiting_label_" + constructionId)) {
+                return; // Ya existe
+            }
+        }
+
+        // Crear texto "En espera"
+        Label waitingLabel = new Label("EN ESPERA");
+        waitingLabel.setId("waiting_label_" + constructionId);
+        waitingLabel.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: #ff9900;");
+        waitingLabel.setLayoutX(constructionView.getX() + constructionView.getFitWidth()/2 - 25);
+        waitingLabel.setLayoutY(constructionView.getY() + constructionView.getFitHeight() + 5);
+
+        root.getChildren().add(waitingLabel);
+    }
+
+    private void updateActiveConstruction(ConstructionOrder activeOrder) {
+        String buildingId = activeOrder.getBuildingId();
+        String backendBuildingType = activeOrder.getType().toString();
+        String displayBuildingType = getBuildingTypeForImage(backendBuildingType);
+        int remainingTime = activeOrder.getRemainingTime();
+        int totalTime = getTotalBuildTimeForType(displayBuildingType);
+
+        // VERIFICAR SI YA SE TERMINÓ
+        if (remainingTime <= 0) {
+            System.out.println("⏰ ¡CONSTRUCCIÓN TERMINADA EN updateActiveConstruction!");
+            forceCompleteConstruction(buildingId, displayBuildingType);
+            return; // NO CONTINUAR
+        }
+
+        System.out.println("🎯 Actualizando construcción ACTIVA: " + displayBuildingType +
+                " ID: " + buildingId +
+                " Tiempo restante: " + remainingTime + "s/" + totalTime + "s");
+
+        // Si no tenemos una visualización para esta construcción, crearla
+        if (!constructionVisuals.containsKey(buildingId)) {
+            // Obtener posición
+            double x = getConstructionPositionX(buildingId);
+            double y = getConstructionPositionY(buildingId);
+            double width = getBuildingWidth(displayBuildingType);
+            double height = getBuildingHeight(displayBuildingType);
+
+            // Mostrar construcción en progreso
+            showConstructionInProgress(x, y, width, height, displayBuildingType, buildingId, totalTime);
+        } else {
+            // Ya existe visualización, actualizarla
+            ImageView constructionView = constructionVisuals.get(buildingId);
+
+            // Cambiar de "en espera" a "activa"
+            constructionView.setOpacity(0.7); // Más opaco para construcción activa
+            removeWaitingText(buildingId);
+
+            // Verificar si ya tiene barra de progreso
+            double progresoActual = barraProgresoManager.obtenerProgresoActual(buildingId);
+            boolean tieneBarra = progresoActual > 0 ||
+                    barraProgresoManager.obtenerProgresoActual(buildingId) >= 0; // Si es >= 0, existe
+
+            // Crear barra de progreso si no existe o si el progreso es 0
+            if (!tieneBarra || progresoActual <= 0) {
+                barraProgresoManager.crearBarraProgresoAnimada(
+                        buildingId, constructionView, totalTime
+                );
+
+                // Iniciar animación desde el progreso actual
+                int tiempoTranscurrido = totalTime - remainingTime;
+                if (tiempoTranscurrido > 0) {
+                    barraProgresoManager.iniciarAnimacionDesde(buildingId, tiempoTranscurrido);
+                } else {
+                    barraProgresoManager.iniciarAnimacion(buildingId);
+                }
+            }
+        }
+
+        // Actualizar progreso
+        ImageView constructionView = constructionVisuals.get(buildingId);
+        if (constructionView != null) {
+            double progress = calculateConstructionProgress(activeOrder, totalTime);
+            updateConstructionProgress(constructionView, progress);
+
+            // Actualizar la barra de progreso animada
+            barraProgresoManager.actualizarProgreso(buildingId, progress, totalTime - remainingTime);
+
+            // SI EL TIEMPO ES 0 O MENOS, COMPLETAR INMEDIATAMENTE
+            if (remainingTime <= 0) {
+                System.out.println("⏰ ¡Tiempo completado! Reemplazando construcción: " + buildingId);
+                completeConstructionNow(buildingId, displayBuildingType);
+            }
+        }
+    }
 
 
     private boolean hasConstructionTimeElapsed(String buildingId) {
@@ -352,40 +649,125 @@ public class GameApp extends Application {
 
 
     private void completeConstructionNow(String buildingId, String buildingType) {
+        System.out.println("🏗️ Intentando completar construcción: " + buildingId + " - " + buildingType);
+
+        // Verificar si tenemos la visualización
         ImageView constructionView = constructionVisuals.get(buildingId);
 
         if (constructionView != null) {
-            System.out.println("🏗️ Completando construcción visualmente: " + buildingId + " - " + buildingType);
-
+            System.out.println("✅ Encontrada vista de construcción para: " + buildingId);
+            System.out.println("📍 Posición actual: (" + constructionView.getX() + ", " + constructionView.getY() + ")");
+            System.out.println("📏 Tamaño: " + constructionView.getFitWidth() + "x" + constructionView.getFitHeight());
 
             // Detener y eliminar la barra de progreso animada
             barraProgresoManager.eliminarBarraProgreso(buildingId);
+
+            // Eliminar texto "EN ESPERA" si existe
+            removeWaitingText(buildingId);
 
             double x = constructionView.getX();
             double y = constructionView.getY();
             double width = constructionView.getFitWidth();
             double height = constructionView.getFitHeight();
 
-            // PRIMERO: Eliminar la barra de progreso si existe
-            eliminarBarraProgreso(buildingId, constructionView);
+            // Crear el edificio final ANTES de remover la construcción
+            createFinalBuilding(x, y, width, height, buildingType);
 
-            // SEGUNDO: Remover la visualización de construcción
+            // Luego remover la visualización de construcción
             root.getChildren().remove(constructionView);
 
-            // TERCERO: Limpiar referencias
+            // Limpiar referencias
             constructionVisuals.remove(buildingId);
             buildingTypesUnderConstruction.remove(buildingId);
             buildingPositions.remove(buildingId);
 
-            // CUARTO: Crear el edificio final
-            createFinalBuilding(x, y, width, height, buildingType);
-
-            // QUINTO: Actualizar recursos si es necesario
+            // Actualizar recursos si es necesario
             updateResourceDisplay();
 
-            System.out.println("✅ Construcción completada visualmente: " + buildingType);
+            System.out.println("✅ Construcción completada y edificio creado: " + buildingType);
+
         } else {
             System.out.println("⚠️ No se encontró vista de construcción para: " + buildingId);
+            System.out.println("🔄 Buscando construcción en cola backend...");
+
+            // Intentar obtener la construcción desde el backend
+            if (territory1 != null && territory1.getTownHall() != null) {
+                Deque<ConstructionOrder> queue = territory1.getTownHall().getConstructionQueue();
+                for (ConstructionOrder order : queue) {
+                    if (order.getBuildingId().equals(buildingId)) {
+                        System.out.println("✅ Construcción encontrada en backend: " + order.getType());
+
+                        // Obtener posición guardada o usar una por defecto
+                        double x, y;
+                        if (buildingPositions.containsKey(buildingId)) {
+                            Position pos = buildingPositions.get(buildingId);
+                            x = pos.x;
+                            y = pos.y;
+                        } else {
+                            x = windowWidth * 0.6;
+                            y = windowHeight * 0.4;
+                        }
+
+                        // Crear el edificio final
+                        createFinalBuilding(x, y, getBuildingWidth(buildingType),
+                                getBuildingHeight(buildingType), buildingType);
+
+                        // Limpiar referencias
+                        constructionVisuals.remove(buildingId);
+                        buildingTypesUnderConstruction.remove(buildingId);
+                        buildingPositions.remove(buildingId);
+
+                        System.out.println("✅ Edificio creado desde backend: " + buildingType);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Método para verificar construcciones huérfanas (completadas pero sin visualización)
+    private void checkForOrphanedConstructions() {
+        if (territory1 == null || territory1.getTownHall() == null) return;
+
+        // Obtener construcciones del backend
+        List<String> ownedBuildings = new ArrayList<>();
+        // Aquí necesitarías un método para obtener edificios ya construidos
+        // Por ahora, solo revisa las construcciones en progreso
+
+        Deque<ConstructionOrder> constructionQueue = territory1.getTownHall().getConstructionQueue();
+
+        // Buscar construcciones que tienen visual pero no están en la cola
+        List<String> toRemove = new ArrayList<>();
+        for (String buildingId : constructionVisuals.keySet()) {
+            boolean foundInQueue = false;
+            for (ConstructionOrder order : constructionQueue) {
+                if (order.getBuildingId().equals(buildingId)) {
+                    foundInQueue = true;
+                    break;
+                }
+            }
+
+            if (!foundInQueue) {
+                System.out.println("⚠️ Construcción huérfana encontrada: " + buildingId);
+                // Intentar completarla
+                String buildingType = buildingTypesUnderConstruction.get(buildingId);
+                if (buildingType != null) {
+                    System.out.println("🔄 Completando construcción huérfana: " + buildingType);
+                    completeConstructionNow(buildingId, buildingType);
+                } else {
+                    toRemove.add(buildingId);
+                }
+            }
+        }
+
+        // Limpiar referencias
+        for (String buildingId : toRemove) {
+            ImageView view = constructionVisuals.remove(buildingId);
+            if (view != null) {
+                root.getChildren().remove(view);
+            }
+            buildingTypesUnderConstruction.remove(buildingId);
+            buildingPositions.remove(buildingId);
         }
     }
 
@@ -408,29 +790,15 @@ public class GameApp extends Application {
             System.out.println("🗑️ Barra de progreso eliminada para: " + buildingId);
         }
     }
-    // Método para calcular progreso de construcción (versión simplificada)
-    private double calculateConstructionProgress(ConstructionOrder order) {
-        if (order == null) return 0.0;
+    private double calculateConstructionProgress(ConstructionOrder order, int totalTime) {
+        if (order == null || totalTime <= 0) return 0.0;
 
         try {
             int remainingTime = order.getRemainingTime();
-            String buildingType = order.getType().toString();
-            int totalTime = getTotalBuildTimeForType(buildingType);
-
-            if (totalTime <= 0) return 0.0;
-
             int elapsedTime = totalTime - remainingTime;
             double progress = Math.min(1.0, Math.max(0.0, (double) elapsedTime / totalTime));
 
-            // Para debug
-            if (progress >= 0.95 && progress < 1.0) {
-                System.out.println("📊 Progreso de " + buildingType + ": " +
-                        String.format("%.1f", progress * 100) + "% " +
-                        "(" + elapsedTime + "/" + totalTime + "s)");
-            }
-
             return progress;
-
         } catch (Exception e) {
             System.err.println("❌ Error calculando progreso: " + e.getMessage());
             return 0.0;
@@ -674,7 +1042,7 @@ public class GameApp extends Application {
     }
 
     private void showConstructionInProgress(double x, double y, double width, double height,
-                                            String buildingType, String constructionId) {
+                                            String buildingType, String constructionId, int totalTime) {
         try {
             Image constructionImage = new Image("file:src/main/resources/images/Construccion.png");
             ImageView constructionView = new ImageView(constructionImage);
@@ -684,19 +1052,24 @@ public class GameApp extends Application {
             constructionView.setPreserveRatio(true);
             constructionView.setX(x);
             constructionView.setY(y);
-            constructionView.setOpacity(0.5);
+            constructionView.setOpacity(0.7); // Más opaco para construcción activa
             constructionView.setId("construction_" + constructionId);
 
-            // Obtener tiempo de construcción según el tipo
-            int tiempoConstruccion = getTotalBuildTimeForType(buildingType);
+            // Eliminar cualquier texto "En espera"
+            removeWaitingText(constructionId);
 
-            // Crear barra de progreso ANIMADA
+            // Crear barra de progreso ANIMADA solo si es construcción activa
             barraProgresoManager.crearBarraProgresoAnimada(
-                    constructionId, constructionView, tiempoConstruccion
+                    constructionId, constructionView, totalTime
             );
 
-            // Iniciar animación inmediatamente
-            barraProgresoManager.iniciarAnimacion(constructionId);
+            // Iniciar animación desde el progreso actual
+            int tiempoTranscurrido = totalTime - getRemainingTimeFromOrder(constructionId);
+            if (tiempoTranscurrido > 0) {
+                barraProgresoManager.iniciarAnimacionDesde(constructionId, tiempoTranscurrido);
+            } else {
+                barraProgresoManager.iniciarAnimacion(constructionId);
+            }
 
             // Guardar referencia
             constructionVisuals.put(constructionId, constructionView);
@@ -705,11 +1078,18 @@ public class GameApp extends Application {
             // Añadir a la escena
             root.getChildren().add(constructionView);
 
-            System.out.println("🚧 Mostrando construcción en progreso: " + buildingType +
-                    " - Tiempo: " + tiempoConstruccion + "s - ID: " + constructionId);
+            System.out.println("🚧 Mostrando construcción ACTIVA: " + buildingType +
+                    " - Tiempo: " + totalTime + "s - ID: " + constructionId);
 
         } catch (Exception e) {
             System.err.println("❌ Error al mostrar construcción en progreso: " + e.getMessage());
+        }
+    }
+
+    private void removeWaitingText(String constructionId) {
+        Node waitingText = root.lookup("#waiting_label_" + constructionId);
+        if (waitingText != null) {
+            root.getChildren().remove(waitingText);
         }
     }
 
@@ -1733,13 +2113,27 @@ public class GameApp extends Application {
 
                 System.out.println("📍 Posición guardada para construcción ID: " + buildingId);
 
-                // Mostrar construcción inmediatamente
-                showConstructionInProgress(posX, posY, buildingWidth, buildingHeight,
-                        currentBuildingType, buildingId);
+                // Obtener tiempo total para el tipo de edificio
+                int totalTime = getTotalBuildTimeForType(currentBuildingType);
+
+                // Verificar si esta construcción es la activa (primera en la cola)
+                ConstructionOrder activeConstruction = queue.peekFirst();
+                boolean esActiva = activeConstruction != null && activeConstruction.getBuildingId().equals(buildingId);
+
+                if (esActiva) {
+                    // Mostrar como construcción activa con barra
+                    showConstructionInProgress(posX, posY, buildingWidth, buildingHeight,
+                            currentBuildingType, buildingId, totalTime);
+                } else {
+                    // Mostrar como construcción en espera
+                    showWaitingConstruction(posX, posY, buildingWidth, buildingHeight,
+                            currentBuildingType, buildingId);
+                }
 
                 buildingTypesUnderConstruction.put(buildingId, currentBuildingType);
 
-                System.out.println("🚧 Construcción iniciada: " + currentBuildingType +
+                System.out.println("🚧 Construcción " + (esActiva ? "ACTIVA" : "EN ESPERA") +
+                        " iniciada: " + currentBuildingType +
                         " - ID: " + buildingId +
                         " - Posición: (" + (int)posX + ", " + (int)posY + ")");
             }
@@ -1749,7 +2143,8 @@ public class GameApp extends Application {
             buildingPositions.put(tempId, new Position(posX, posY));
             buildingTypesUnderConstruction.put(tempId, currentBuildingType);
 
-            showConstructionInProgress(posX, posY, buildingWidth, buildingHeight,
+            // Mostrar como construcción en espera
+            showWaitingConstruction(posX, posY, buildingWidth, buildingHeight,
                     currentBuildingType, tempId);
 
             System.out.println("⚠️ Construcción temporal iniciada: " + currentBuildingType);
@@ -1759,6 +2154,39 @@ public class GameApp extends Application {
         updateResourceDisplay();
 
         cancelBuildingMode();
+    }
+
+    private int getRemainingTimeFromOrder(String buildingId) {
+        if (territory1 != null && territory1.getTownHall() != null) {
+            Deque<ConstructionOrder> queue = territory1.getTownHall().getConstructionQueue();
+            for (ConstructionOrder order : queue) {
+                if (order.getBuildingId().equals(buildingId)) {
+                    return order.getRemainingTime();
+                }
+            }
+        }
+        return 0;
+    }
+
+    private double calculateConstructionProgress(ConstructionOrder order) {
+        if (order == null) return 0.0;
+
+        try {
+            String buildingType = order.getType().toString();
+            String displayType = getBuildingTypeForImage(buildingType);
+            int totalTime = getTotalBuildTimeForType(displayType);
+            int remainingTime = order.getRemainingTime();
+
+            if (totalTime <= 0) return 0.0;
+
+            int elapsedTime = totalTime - remainingTime;
+            double progress = Math.min(1.0, Math.max(0.0, (double) elapsedTime / totalTime));
+
+            return progress;
+        } catch (Exception e) {
+            System.err.println("❌ Error calculando progreso: " + e.getMessage());
+            return 0.0;
+        }
     }
 
     /**
@@ -3851,6 +4279,8 @@ public class GameApp extends Application {
     }
 
     //METODOS DE LA BARRA DE CONSTRUCCION =========
+    // Reemplaza la clase BarraProgresoAnimadaManager actual con esta versión completa:
+
     private class BarraProgresoAnimadaManager {
         private final Map<String, ProgressBarData> barrasPorConstruccion = new HashMap<>();
 
@@ -3943,6 +4373,27 @@ public class GameApp extends Application {
             }
         }
 
+        public void iniciarAnimacionDesde(String buildingId, int tiempoTranscurrido) {
+            ProgressBarData data = barrasPorConstruccion.get(buildingId);
+            if (data != null && data.animacion != null) {
+                // Saltar al tiempo ya transcurrido
+                data.animacion.jumpTo(Duration.seconds(tiempoTranscurrido));
+                data.animacion.play();
+                System.out.println("⏩ Iniciando animación desde " + tiempoTranscurrido + "s para: " + buildingId);
+            }
+        }
+
+        public void actualizarProgreso(String buildingId, double progreso, int tiempoTranscurrido) {
+            ProgressBarData data = barrasPorConstruccion.get(buildingId);
+            if (data != null && data.barraProgreso != null) {
+                // Actualizar el ancho de la barra basado en el progreso
+                double width = data.fondo.getWidth();
+                data.barraProgreso.setWidth(width * progreso);
+                data.progresoActual = progreso;
+                actualizarColorBarra(data.barraProgreso, progreso);
+            }
+        }
+
         public void pausarAnimacion(String buildingId) {
             ProgressBarData data = barrasPorConstruccion.get(buildingId);
             if (data != null && data.animacion != null) {
@@ -3957,6 +4408,14 @@ public class GameApp extends Application {
                     data.animacion.getStatus() == Animation.Status.PAUSED) {
                 data.animacion.play();
                 System.out.println("▶️ Reanudando animación de barra para: " + buildingId);
+            }
+        }
+
+        public void detenerAnimacion(String buildingId) {
+            ProgressBarData data = barrasPorConstruccion.get(buildingId);
+            if (data != null && data.animacion != null) {
+                data.animacion.stop();
+                System.out.println("⏹️ Deteniendo animación para: " + buildingId);
             }
         }
 
