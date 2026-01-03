@@ -20,6 +20,7 @@ import javafx.geometry.Pos;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.Node;
 import javafx.scene.Scene;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.effect.DropShadow;
@@ -3386,12 +3387,12 @@ public class GameApp extends Application {
 
     private void makeBuildingInteractive(ImageView buildingView, String buildingType) {
         buildingView.setOnMouseClicked(e -> {
-            System.out.println("🏠 " + buildingType + " clickeado");
+            System.out.println("🏠 " + buildingType + " clickeado - ID: " + buildingView.getId());
 
-            // Si es un cuartel, mostrar su menú especial
+            // Si es un cuartel, mostrar su menú especial CON LA REFERENCIA DEL CUARTEL
             if (buildingType.equalsIgnoreCase("Cuartel")) {
                 System.out.println("⚔️ Cuartel clickeado - Abriendo menú de unidades...");
-                showBarracksMenu(buildingView);
+                showBarracksMenu(buildingView); // ¡Pasar el cuartel específico!
             }
         });
 
@@ -3403,7 +3404,7 @@ public class GameApp extends Application {
             // Efecto especial para cuarteles
             if (buildingType.equalsIgnoreCase("Cuartel")) {
                 DropShadow glow = new DropShadow();
-                glow.setColor(Color.rgb(220, 20, 60, 0.7)); // Rojo carmesí para cuartel
+                glow.setColor(Color.rgb(220, 20, 60, 0.7));
                 glow.setRadius(15);
                 buildingView.setEffect(glow);
             }
@@ -4139,7 +4140,7 @@ public class GameApp extends Application {
         barracksPopup.setAutoHide(true);
         barracksPopup.setHideOnEscape(true);
 
-        VBox mainPanel = createBarracksPanel();
+        VBox mainPanel = createBarracksPanel(barracksView); // ¡Pasar barracksView aquí!
         StackPane container = new StackPane(mainPanel);
 
         double panelWidth = 280;
@@ -4161,7 +4162,10 @@ public class GameApp extends Application {
     /**
      * Crea el panel del Cuartel con el MISMO estilo que el TownHall
      */
-    private VBox createBarracksPanel() {
+    /**
+     * Crea el panel del Cuartel con el MISMO estilo que el TownHall
+     */
+    private VBox createBarracksPanel(ImageView specificBarracksView) { // ¡Recibir el cuartel específico!
         VBox panel = new VBox(10);
         panel.setAlignment(Pos.TOP_CENTER);
         panel.setPadding(new Insets(20, 20, 20, 20));
@@ -4193,20 +4197,20 @@ public class GameApp extends Application {
         Region separator = new Region();
         separator.setPrefHeight(2);
         separator.setPrefWidth(200);
-        separator.setStyle("-fx-background-color: linear-gradient(to right, transparent, #c0392b, transparent);"); // Rojo para cuartel
+        separator.setStyle("-fx-background-color: linear-gradient(to right, transparent, #c0392b, transparent);");
 
         // Contenedor de botones
         VBox buttonContainer = new VBox(8);
         buttonContainer.setAlignment(Pos.CENTER);
         buttonContainer.setPadding(new Insets(15, 0, 0, 0));
 
-        // Botón para crear caballero
-        Button knightButton = createBarracksButton("♞", "Crear Caballero", "50 Oro");
+        // Botón para crear caballero - pasar el cuartel específico al crear
+        Button knightButton = createBarracksButton("♞", "Crear Caballero", "50 Oro", specificBarracksView);
 
         knightButton.setOnAction(e -> {
-            System.out.println("♞ Creando Caballero...");
+            System.out.println("♞ Creando Caballero en el cuartel específico...");
             barracksPopup.hide();
-            createKnightUnit(barracksPopup);
+            createKnightUnitForSpecificBarracks(specificBarracksView); // ¡Usar el cuartel específico!
         });
 
         buttonContainer.getChildren().addAll(knightButton);
@@ -4219,7 +4223,7 @@ public class GameApp extends Application {
     /**
      * Crea un botón para el menú del Cuartel con el MISMO estilo que el TownHall
      */
-    private Button createBarracksButton(String icon, String text, String cost) {
+    private Button createBarracksButton(String icon, String text, String cost, ImageView specificBarracksView) {
         HBox buttonContent = new HBox(10);
         buttonContent.setAlignment(Pos.CENTER_LEFT);
         buttonContent.setPadding(new Insets(8, 15, 8, 15));
@@ -4256,7 +4260,7 @@ public class GameApp extends Application {
                         "-fx-text-fill: #2c3e50;";
 
         // Color específico para botones de cuartel (rojo/marrón)
-        String borderColor = "#c0392b"; // Rojo oscuro para cuartel
+        String borderColor = "#c0392b";
 
         // Aplicar el color de borde específico
         button.setStyle(baseStyle +
@@ -4292,7 +4296,7 @@ public class GameApp extends Application {
             button.setStyle(baseStyle +
                     "-fx-border-color: " + borderColor + ";" +
                     "-fx-border-width: 3; " +
-                    "-fx-background-color: rgba(220, 220, 220, 0.50);"); // 50% opacidad
+                    "-fx-background-color: rgba(220, 220, 220, 0.50);");
         });
 
         button.setOnMouseReleased(e -> {
@@ -4301,7 +4305,81 @@ public class GameApp extends Application {
                     "-fx-border-width: 2;");
         });
 
+        // Guardar referencia al cuartel específico en el botón
+        button.setUserData(specificBarracksView);
+
         return button;
+    }
+
+    /**
+     * Crea un caballero específicamente para el cuartel que fue clickeado
+     */
+    private void createKnightUnitForSpecificBarracks(ImageView specificBarracksView) {
+        try {
+            System.out.println("♞ Creando caballero en el cuartel específico: " +
+                    specificBarracksView.getId() + " en posición (" +
+                    (int)specificBarracksView.getX() + ", " +
+                    (int)specificBarracksView.getY() + ")");
+
+            // Obtener el MilitaryBase del backend PARA ESTE CUARTEL ESPECÍFICO
+            MilitaryBase militaryBase = getMilitaryBaseForBarracks(specificBarracksView);
+            if (militaryBase == null) {
+                System.out.println("❌ No se encontró MilitaryBase para este cuartel específico");
+                showErrorPopup("No se pudo encontrar el cuartel en el backend");
+                return;
+            }
+
+            // Intentar crear caballero en el backend
+            boolean knightCreated = militaryBase.createKnight();
+
+            if (knightCreated) {
+                System.out.println("✅ Orden de entrenamiento creada en backend para caballero en cuartel específico");
+
+                // Obtener la orden de entrenamiento más reciente
+                UnitCreationOrder latestOrder = getLatestTrainingOrder(militaryBase);
+                if (latestOrder != null) {
+                    String unitId = latestOrder.getUnitId();
+
+                    // Guardar referencia para sincronización CON EL CUARTEL ESPECÍFICO
+                    saveUnitTrainingInfo(unitId, "caballero", specificBarracksView);
+
+                    // Mostrar construcción en progreso EN EL CUARTEL ESPECÍFICO
+                    showKnightTrainingInProgress(specificBarracksView, unitId);
+
+                    // Asegurar que el ciclo de actualización esté corriendo
+                    restartConstructionUpdateLoopIfNeeded();
+
+                    // Actualizar recursos
+                    updateResourceDisplay();
+
+                    System.out.println("♞ Orden de entrenamiento iniciada - ID: " + unitId +
+                            " - Cuartel: " + specificBarracksView.getId());
+                } else {
+                    System.out.println("⚠️ Orden de entrenamiento creada pero no encontrada");
+                }
+            } else {
+                System.out.println("❌ No se pudo crear caballero (recursos insuficientes)");
+                showInsufficientResourcesForKnight();
+            }
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al crear caballero en cuartel específico: " + e.getMessage());
+            e.printStackTrace();
+            showErrorPopup("Error al crear caballero: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Método auxiliar para mostrar errores
+     */
+    private void showErrorPopup(String message) {
+        Platform.runLater(() -> {
+            Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.setTitle("Error");
+            alert.setHeaderText(null);
+            alert.setContentText(message);
+            alert.showAndWait();
+        });
     }
 
     /**
