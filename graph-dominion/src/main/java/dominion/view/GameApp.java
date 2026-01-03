@@ -25,6 +25,7 @@ import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
 import javafx.scene.shape.Rectangle;
 import javafx.stage.*;
 import javafx.util.Duration;
@@ -335,20 +336,109 @@ public class GameApp extends Application {
         selectedUnitViews.remove(iv);
         applySelectionStyle(iv, false); //
     }
+    private void sendSelectedWoodcuttersToTree(ImageView tree) {
+        // Filtrar solo los leñadores seleccionados
+        List<ImageView> woodcutters = new ArrayList<>();
+
+        for (ImageView unit : selectedUnitViews) {
+            if (isWoodcutter(unit)) {
+                woodcutters.add(unit);
+            }
+        }
+
+        if (woodcutters.isEmpty()) {
+            System.out.println("⚠️ No hay leñadores seleccionados");
+            return;
+        }
+
+        // Detener cualquier animación de movimiento actual
+        for (ImageView woodcutter : woodcutters) {
+            stopWoodcuttingIfActive(woodcutter);
+
+            // Detener cualquier animación de movimiento en curso
+            woodcutter.getTransforms().clear();
+            woodcutter.setTranslateX(0);
+            woodcutter.setTranslateY(0);
+        }
+
+        // Obtener posición alrededor del árbol
+        double treeX = tree.getX();
+        double treeY = tree.getY();
+        double treeWidth = tree.getFitWidth();
+        double treeHeight = tree.getFitHeight();
+
+        // Calcular formación alrededor del árbol
+        moveWoodcuttersToTree(woodcutters, treeX, treeY, treeWidth, treeHeight);
+
+        // Iniciar tala para cada leñador
+        for (ImageView woodcutter : woodcutters) {
+            startWoodcutting(woodcutter, tree);
+        }
+
+        // NO LIMPIAR la selección aquí - mantenlos seleccionados
+        // clearSelectedUnitViews(); // <-- COMENTA O ELIMINA ESTA LÍNEA
+    }
+
+    private boolean isWoodcutter(ImageView unit) {
+        Object userData = unit.getUserData();
+        String id = unit.getId();
+        return (userData instanceof String && ((String) userData).equals("leñador")) ||
+                (id != null && id.startsWith("leñador_"));
+    }
+
+    private void moveWoodcuttersToTree(List<ImageView> woodcutters, double treeX, double treeY,
+                                       double treeWidth, double treeHeight) {
+        int count = woodcutters.size();
+        double treeCenterX = treeX + treeWidth / 2;
+        double treeCenterY = treeY + treeHeight / 2;
+        double radius = Math.max(treeWidth, treeHeight) / 2 + 60; // Distancia alrededor del árbol
+        double unitSize = 50;
+
+        for (int i = 0; i < count; i++) {
+            double angle = 2 * Math.PI * i / count;
+            double targetX = treeCenterX + Math.cos(angle) * radius - unitSize / 2;
+            double targetY = treeCenterY + Math.sin(angle) * radius - unitSize / 2;
+
+            // Asegurar que está dentro de los límites
+            targetX = Math.max(0, Math.min(targetX, windowWidth - unitSize));
+            targetY = Math.max(0, Math.min(targetY, windowHeight - unitSize));
+
+            animateMove(woodcutters.get(i), targetX, targetY);
+        }
+    }
 
     private void handleUnitClickOrMove(double x, double y, boolean shiftDown) {
+        // Primero verificar si se hizo click en un árbol
+        ImageView clickedTree = getTreeAt(x, y);
+
+        if (clickedTree != null && !selectedUnitViews.isEmpty()) {
+            // Verificar si hay al menos un leñador seleccionado
+            boolean hasWoodcutter = false;
+            for (ImageView unit : selectedUnitViews) {
+                if (isWoodcutter(unit)) {
+                    hasWoodcutter = true;
+                    break;
+                }
+            }
+
+            // Si hay leñadores seleccionados y se clickeó un árbol
+            if (hasWoodcutter) {
+                sendSelectedWoodcuttersToTree(clickedTree);
+                return;
+            }
+        }
+
+        // Código original...
         ImageView clicked = getUnitViewAt(x, y);
 
         if (clicked != null) {
             if (!shiftDown && selectedUnitViews.contains(clicked)) {
-                removeFromSelection(clicked);   // 👈 lo creamos abajo si no existe
+                removeFromSelection(clicked);
                 return;
             }
 
-            // Si NO hay shift y no estaba seleccionada -> seleccionar solo esa
             if (!shiftDown) clearSelectedUnitViews();
 
-            // Con shift: toggle (si está, se quita; si no, se agrega)
             if (shiftDown && selectedUnitViews.contains(clicked)) {
                 removeFromSelection(clicked);
             } else {
@@ -359,7 +449,312 @@ public class GameApp extends Application {
 
         // Click en suelo: mover lo seleccionado
         moveSelectedUnitsTo(x, y);
-        clearSelectedUnitViews();
+        // clearSelectedUnitViews(); // <-- COMENTA O ELIMINA ESTA LÍNEA
+    }
+
+    // Método para obtener un árbol en las coordenadas dadas
+    private ImageView getTreeAt(double x, double y) {
+        for (Node node : root.getChildren()) {
+            if (node instanceof ImageView imageView) {
+                if (imageView.getId() != null && imageView.getId().startsWith("Arbol_")) {
+                    Bounds bounds = imageView.getBoundsInParent();
+                    if (bounds.contains(x, y)) {
+                        return imageView;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private final Map<ImageView, WoodcuttingTask> activeWoodcuttingTasks = new HashMap<>();
+
+    private class WoodcuttingTask {
+        ImageView woodcutter;
+        ImageView tree;
+        Timeline collectionTimeline;
+        Timeline treeLifeTimeline;
+        int woodCollected = 0;
+        boolean isActive = true;
+
+        WoodcuttingTask(ImageView woodcutter, ImageView tree) {
+            this.woodcutter = woodcutter;
+            this.tree = tree;
+        }
+    }
+
+    private void startWoodcutting(ImageView woodcutter, ImageView tree) {
+        // Verificar si ya hay una tarea activa para este leñador
+        if (activeWoodcuttingTasks.containsKey(woodcutter)) {
+            WoodcuttingTask existingTask = activeWoodcuttingTasks.get(woodcutter);
+            existingTask.isActive = false;
+            if (existingTask.collectionTimeline != null) {
+                existingTask.collectionTimeline.stop();
+            }
+            if (existingTask.treeLifeTimeline != null) {
+                existingTask.treeLifeTimeline.stop();
+            }
+        }
+
+        // Crear nueva tarea
+        WoodcuttingTask task = new WoodcuttingTask(woodcutter, tree);
+
+        // Timeline para recolectar madera cada 10 segundos (5 ciclos = 50 segundos)
+        task.collectionTimeline = new Timeline(
+                new KeyFrame(Duration.seconds(10), e -> collectWoodFromTree(task))
+        );
+        task.collectionTimeline.setCycleCount(5); // 5 ciclos = 50 segundos
+
+        // Timeline para eliminar el árbol después de 50 segundos
+        task.treeLifeTimeline = new Timeline(
+                new KeyFrame(Duration.seconds(50), e -> removeTree(task))
+        );
+        task.treeLifeTimeline.setCycleCount(1); // Solo una vez
+
+        // Configurar lo que pasa cuando termina la recolección
+        task.collectionTimeline.setOnFinished(e -> {
+            System.out.println("✅ Leñador completó la tala del árbol " + tree.getId());
+            task.isActive = false;
+
+        });
+
+        // Configurar lo que pasa cuando se elimina el árbol
+        task.treeLifeTimeline.setOnFinished(e -> {
+            // Esto ya está manejado en removeTree, pero lo dejamos por si acaso
+            System.out.println("🌳 Tiempo de vida del árbol " + tree.getId() + " terminado");
+        });
+
+        // Iniciar las timelines
+        task.collectionTimeline.play();
+        task.treeLifeTimeline.play();
+
+        // Guardar la tarea
+        activeWoodcuttingTasks.put(woodcutter, task);
+
+        System.out.println("🪓 Leñador comenzó a talar árbol " + tree.getId() +
+                " - 5 ciclos de 10 segundos = 50 segundos total");
+    }
+
+    private void collectWoodFromTree(WoodcuttingTask task) {
+        if (!task.isActive) return;
+
+        // Agregar madera al TownHall
+        if (territory1 != null && territory1.getTownHall() != null) {
+            territory1.getTownHall().getStoredResources().addResource(ResourceType.WOOD, 25);
+
+            task.woodCollected += 25;
+
+            // Actualizar display
+            Platform.runLater(() -> updateResourceDisplay());
+
+            System.out.println("🪵 +25 Madera recolectada del árbol " + task.tree.getId() +
+                    " (Ciclo: " + (task.woodCollected / 25) + "/5, Total: " + task.woodCollected + ")");
+        }
+    }
+
+    private void showWoodCollectionEffect(ImageView woodcutter, ImageView tree) {
+        // Crear texto flotante
+        Label woodLabel = new Label("+25 Madera");
+        woodLabel.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: #228B22;");
+
+        // Posicionar entre el leñador y el árbol
+        double woodcutterX = woodcutter.getX() + woodcutter.getFitWidth() / 2;
+        double woodcutterY = woodcutter.getY() + woodcutter.getFitHeight() / 2;
+        double treeX = tree.getX() + tree.getFitWidth() / 2;
+        double treeY = tree.getY() + tree.getFitHeight() / 2;
+
+        double labelX = (woodcutterX + treeX) / 2 - 30;
+        double labelY = (woodcutterY + treeY) / 2;
+
+        woodLabel.setLayoutX(labelX);
+        woodLabel.setLayoutY(labelY);
+
+        root.getChildren().add(woodLabel);
+
+        // Animación del texto
+        FadeTransition fadeOut = new FadeTransition(Duration.seconds(1.5), woodLabel);
+        fadeOut.setFromValue(1.0);
+        fadeOut.setToValue(0.0);
+
+        TranslateTransition moveUp = new TranslateTransition(Duration.seconds(1.5), woodLabel);
+        moveUp.setByY(-30);
+
+        ParallelTransition parallel = new ParallelTransition(fadeOut, moveUp);
+        parallel.setOnFinished(e -> root.getChildren().remove(woodLabel));
+        parallel.play();
+
+        // Efecto de partículas de madera
+        createWoodParticles(tree);
+    }
+
+    private void createWoodParticles(ImageView tree) {
+        double treeX = tree.getX() + tree.getFitWidth() / 2;
+        double treeY = tree.getY() + tree.getFitHeight() / 2;
+
+        for (int i = 0; i < 5; i++) {
+            Circle particle = new Circle(2, Color.rgb(139, 69, 19, 0.8));
+            particle.setCenterX(treeX);
+            particle.setCenterY(treeY);
+
+            root.getChildren().add(particle);
+
+            // Animación aleatoria
+            double angle = Math.random() * 2 * Math.PI;
+            double distance = 20 + Math.random() * 30;
+
+            TranslateTransition move = new TranslateTransition(Duration.seconds(1), particle);
+            move.setByX(Math.cos(angle) * distance);
+            move.setByY(Math.sin(angle) * distance);
+
+            FadeTransition fade = new FadeTransition(Duration.seconds(1), particle);
+            fade.setFromValue(0.8);
+            fade.setToValue(0);
+
+            ParallelTransition particleAnim = new ParallelTransition(move, fade);
+            particleAnim.setOnFinished(e -> root.getChildren().remove(particle));
+            particleAnim.play();
+        }
+    }
+
+    private void removeTree(WoodcuttingTask task) {
+        if (task.tree != null && root.getChildren().contains(task.tree)) {
+            // Detener todas las tareas relacionadas con este árbol
+            stopAllTasksForTree(task.tree);
+
+            // Detener las timelines de esta tarea
+            if (task.collectionTimeline != null) {
+                task.collectionTimeline.stop();
+            }
+            if (task.treeLifeTimeline != null) {
+                task.treeLifeTimeline.stop();
+            }
+
+            // Marcar como inactiva
+            task.isActive = false;
+
+            // Animación de desaparición simple del árbol
+            FadeTransition fadeOut = new FadeTransition(Duration.seconds(1), task.tree);
+            fadeOut.setFromValue(1.0);
+            fadeOut.setToValue(0.0);
+
+            fadeOut.setOnFinished(e -> {
+                root.getChildren().remove(task.tree);
+                System.out.println("🌳 Árbol " + task.tree.getId() + " talado y removido después de 50 segundos");
+            });
+
+            fadeOut.play();
+
+            // Remover la tarea del mapa
+            activeWoodcuttingTasks.remove(task.woodcutter);
+        }
+    }
+
+    private void stopAllTasksForTree(ImageView tree) {
+        List<ImageView> toRemove = new ArrayList<>();
+
+        for (Map.Entry<ImageView, WoodcuttingTask> entry : activeWoodcuttingTasks.entrySet()) {
+            if (entry.getValue().tree == tree) {
+                entry.getValue().isActive = false;
+                if (entry.getValue().collectionTimeline != null) {
+                    entry.getValue().collectionTimeline.stop();
+                }
+                toRemove.add(entry.getKey());
+            }
+        }
+
+        for (ImageView woodcutter : toRemove) {
+            activeWoodcuttingTasks.remove(woodcutter);
+        }
+    }
+
+    private void createTreeStump(double x, double y, double size) {
+        // Crear un tocón (opcional, visualmente)
+        Circle stump = new Circle(size / 4, Color.rgb(101, 67, 33));
+        stump.setCenterX(x + size / 2);
+        stump.setCenterY(y + size / 2);
+
+        root.getChildren().add(stump);
+
+        // El tocón puede ser clickeable para eliminarlo más tarde
+        stump.setOnMouseClicked(e -> {
+            root.getChildren().remove(stump);
+            System.out.println("🪵 Tocón removido");
+        });
+    }
+
+    private void animateMove(ImageView unit, double targetX, double targetY) {
+        // Detener cualquier animación en curso
+        if (unit.getProperties().containsKey("currentAnimation")) {
+            TranslateTransition oldAnimation = (TranslateTransition) unit.getProperties().get("currentAnimation");
+            if (oldAnimation != null) {
+                oldAnimation.stop();
+            }
+        }
+
+        // Detener tala si está activa
+        stopWoodcuttingIfActive(unit);
+
+        double startX = unit.getX() + unit.getTranslateX();
+        double startY = unit.getY() + unit.getTranslateY();
+
+        double dx = targetX - startX;
+        double dy = targetY - startY;
+        double dist = Math.sqrt(dx * dx + dy * dy);
+
+        double speed = 160.0;
+        double seconds = Math.max(0.15, dist / speed);
+
+        TranslateTransition tt = new TranslateTransition(Duration.seconds(seconds), unit);
+        tt.setByX(dx);
+        tt.setByY(dy);
+
+        // Guardar referencia a la animación actual
+        unit.getProperties().put("currentAnimation", tt);
+
+        tt.setOnFinished(ev -> {
+            unit.setX(targetX);
+            unit.setY(targetY);
+            unit.setTranslateX(0);
+            unit.setTranslateY(0);
+            unit.getProperties().remove("currentAnimation");
+        });
+
+        tt.play();
+    }
+
+    private void stopWoodcuttingIfActive(ImageView woodcutter) {
+        if (activeWoodcuttingTasks.containsKey(woodcutter)) {
+            WoodcuttingTask task = activeWoodcuttingTasks.get(woodcutter);
+            task.isActive = false;
+            if (task.collectionTimeline != null) {
+                task.collectionTimeline.stop();
+            }
+            if (task.treeLifeTimeline != null) {
+                task.treeLifeTimeline.stop();
+            }
+            activeWoodcuttingTasks.remove(woodcutter);
+            System.out.println("🪓 Leñador detuvo la tala (movido manualmente)");
+        }
+    }
+
+
+
+    private void moveWoodcutterAfterFinishing(ImageView woodcutter, ImageView tree) {
+        // Mover el leñador a una posición aleatoria cerca del árbol
+        double treeX = tree.getX() + tree.getFitWidth() / 2;
+        double treeY = tree.getY() + tree.getFitHeight() / 2;
+
+        double angle = Math.random() * 2 * Math.PI;
+        double distance = 100 + Math.random() * 100;
+
+        double targetX = treeX + Math.cos(angle) * distance;
+        double targetY = treeY + Math.sin(angle) * distance;
+
+        // Asegurar que esté dentro de los límites
+        targetX = Math.max(0, Math.min(targetX, windowWidth - 50));
+        targetY = Math.max(0, Math.min(targetY, windowHeight - 50));
+
+        animateMove(woodcutter, targetX, targetY);
     }
 
     private void moveSelectedUnitsTo(double destX, double destY) {
@@ -447,31 +842,6 @@ public class GameApp extends Application {
 
             animateMove(units.get(i), tx, ty);
         }
-    }
-
-    private void animateMove(ImageView unit, double targetX, double targetY) {
-        double startX = unit.getX() + unit.getTranslateX();
-        double startY = unit.getY() + unit.getTranslateY();
-
-        double dx = targetX - startX;
-        double dy = targetY - startY;
-        double dist = Math.sqrt(dx * dx + dy * dy);
-
-        double speed = 160.0;
-        double seconds = Math.max(0.15, dist / speed);
-
-        TranslateTransition tt = new TranslateTransition(Duration.seconds(seconds), unit);
-        tt.setByX(dx);
-        tt.setByY(dy);
-
-        tt.setOnFinished(ev -> {
-            unit.setX(targetX);
-            unit.setY(targetY);
-            unit.setTranslateX(0);
-            unit.setTranslateY(0);
-        });
-
-        tt.play();
     }
 
     private void addToSelection(ImageView unit) {
@@ -1972,12 +2342,24 @@ public class GameApp extends Application {
                     constructionUpdateTimeline.play();
                 }
 
+                // Reanudar tareas de tala
+                for (WoodcuttingTask task : activeWoodcuttingTasks.values()) {
+                    if (task.isActive) {
+                        if (task.collectionTimeline != null &&
+                                task.collectionTimeline.getStatus() == Animation.Status.PAUSED) {
+                            task.collectionTimeline.play();
+                        }
+                        if (task.treeLifeTimeline != null &&
+                                task.treeLifeTimeline.getStatus() == Animation.Status.PAUSED) {
+                            task.treeLifeTimeline.play();
+                        }
+                    }
+                }
+
                 System.out.println("▶ Juego reanudado");
             });
 
-            javafx.animation.ParallelTransition parallel = new javafx.animation.ParallelTransition(
-                    menuFade, menuScale, overlayFade
-            );
+            ParallelTransition parallel = new ParallelTransition(menuFade, menuScale, overlayFade);
             parallel.play();
         } else {
             // Si no hay menú, simplemente remover
@@ -1999,7 +2381,18 @@ public class GameApp extends Application {
      * Habilita/deshabilita la interacción con elementos del juego
      */
     private void disableGameInteractions(boolean disable) {
+
+
         if (disable) {
+            // Pausar todas las tareas de tala
+            for (WoodcuttingTask task : activeWoodcuttingTasks.values()) {
+                if (task.collectionTimeline != null) {
+                    task.collectionTimeline.pause();
+                }
+                if (task.treeLifeTimeline != null) {
+                    task.treeLifeTimeline.pause();
+                }
+            }
             // GUARDAR los handlers actuales ANTES de deshabilitarlos
             Scene scene = root.getScene();
             if (scene != null) {
@@ -2043,6 +2436,15 @@ public class GameApp extends Application {
                 pauseOverlay.toFront();
             }
         } else {
+            // ¡FALTA ESTO! Reanudar todas las tareas de tala al salir de pausa
+            for (WoodcuttingTask task : activeWoodcuttingTasks.values()) {
+                if (task.collectionTimeline != null) {
+                    task.collectionTimeline.play();
+                }
+                if (task.treeLifeTimeline != null) {
+                    task.treeLifeTimeline.play();
+                }
+            }
             // Rehabilitar todos los elementos
             for (Node node : root.getChildren()) {
                 node.setMouseTransparent(false);
@@ -2075,6 +2477,24 @@ public class GameApp extends Application {
                 savedMouseReleased = null;
             }
         }
+    }
+
+    public void cleanupWoodcuttingTasks() {
+        for (WoodcuttingTask task : activeWoodcuttingTasks.values()) {
+            if (task.collectionTimeline != null) {
+                task.collectionTimeline.stop();
+            }
+            if (task.treeLifeTimeline != null) {
+                task.treeLifeTimeline.stop();
+            }
+        }
+        activeWoodcuttingTasks.clear();
+    }
+
+    @Override
+    public void stop() throws Exception {
+        cleanupWoodcuttingTasks();
+        super.stop();
     }
 
 
