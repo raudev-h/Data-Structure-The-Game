@@ -4759,9 +4759,18 @@ public class GameApp extends Application {
             data.barraProgreso.setArcWidth(3);
             data.barraProgreso.setArcHeight(3);
 
-            // Contenedor
+            // Contenedor - CRÍTICO: hacerlo transparente al mouse
             data.contenedor = new Pane(data.fondo, data.barraProgreso);
             data.contenedor.setId("progress_" + buildingId);
+
+            // HACER TODO EL CONTENEDOR TRANSPARENTE AL MOUSE
+            data.contenedor.setMouseTransparent(true);
+            data.contenedor.setPickOnBounds(false);
+            data.contenedor.setFocusTraversable(false);
+
+            // También hacer los rectángulos individuales transparentes al mouse
+            data.fondo.setMouseTransparent(true);
+            data.barraProgreso.setMouseTransparent(true);
 
             // Crear animación suave
             data.animacion = new Timeline(
