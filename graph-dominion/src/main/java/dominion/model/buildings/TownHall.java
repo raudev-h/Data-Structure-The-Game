@@ -124,15 +124,15 @@ public class TownHall {
     }
 
     public ArrayList<Miner> getMiners(){
-        ArrayList<Miner> woodCutters = new ArrayList<>();
+        ArrayList<Miner> miners = new ArrayList<>();
 
         for( ResourceCollector rc: resourceCollectors){
             if(rc instanceof Miner m){
-                woodCutters.add(m);
+                miners.add(m);
             }
         }
 
-        return woodCutters;
+        return miners;
     }
 
     public int getTotalEffectiveDefenceBases(){
@@ -240,9 +240,9 @@ public class TownHall {
     }
 
     public void createUnit(String type){
-        if(type.equalsIgnoreCase("Minero"))
+        if(type.equalsIgnoreCase("minero"))
             resourceCollectors.add(new Miner());
-        else
+        else if(type.equalsIgnoreCase("leñador"))
             resourceCollectors.add(new WoodCutter());
     }
 

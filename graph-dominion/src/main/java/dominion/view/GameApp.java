@@ -106,7 +106,7 @@ public class GameApp extends Application {
         addMinesToMap();
 
         // 9. Crear unidades
-        createUnitNextToTownHall("leñador", "minero.png", 50);
+        createUnitNextToTownHall("minero", "minero.png", 50);
         createUnitNextToTownHall("minero", "minero.png", 50);
         createUnitNextToTownHall("leñador", "Leñador.png", 50);
 
@@ -1759,7 +1759,7 @@ public class GameApp extends Application {
             TownHall townHall1 = new TownHall("1", territory1, 100, 5);
             territory1.setTownHall(townHall1);
             territory1.getTownHall().getStoredResources().addResource(ResourceType.WOOD, 600);
-            territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, 500);
+            territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, 1000);
 
             DropShadow glow = new DropShadow();
             glow.setColor(Color.rgb(255, 215, 0, 0.7));
@@ -1845,6 +1845,20 @@ public class GameApp extends Application {
         title.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;");
         title.setPadding(new Insets(0, 0, 10, 0));
 
+        // Mostrar información de población
+        int numHouses = territory1 != null && territory1.getTownHall() != null ?
+                territory1.getTownHall().getHouses().size() : 0;
+        int mineros = countUnitsOfType("minero");
+        int leñadores = countUnitsOfType("leñador");
+
+        System.out.println("Hay "+ leñadores + " cantidad de leñadores");
+
+        Label populationInfo = new Label(
+                "Casas: " + numHouses + " | Mineros: " + mineros + " | Leñadores: " + leñadores
+        );
+        populationInfo.setStyle("-fx-font-size: 10px; -fx-text-fill: #7f8c8d; -fx-font-weight: bold;");
+        populationInfo.setPadding(new Insets(0, 0, 5, 0));
+
         Region separator = new Region();
         separator.setPrefHeight(2);
         separator.setStyle("-fx-background-color: #d4af37; -fx-background-radius: 1;");
@@ -1853,10 +1867,21 @@ public class GameApp extends Application {
         buttonContainer.setAlignment(Pos.CENTER);
         buttonContainer.setPadding(new Insets(10, 0, 0, 0));
 
+        // Obtener límites actuales
+        int maxMineros = getMaxUnitsForHouses(numHouses);
+        int maxLeñadores = getMaxUnitsForHouses(numHouses);
+
         Button houseButton = createTextButton("🏠", "Crear Casa", "60 Madera");
         Button barracksButton = createTextButton("⚔", "Crear Cuartel", "100 Madera");
-        Button minerButton = createTextButton("⛏", "Crear Minero", "75 Oro");
-        Button lumberjackButton = createTextButton("", "Crear Leñador", "50 Oro");
+
+        // Añadir información de límite a los botones de unidades
+        String minerButtonText = "Crear Minero (" + mineros + "/" +
+                (maxMineros == Integer.MAX_VALUE ? "∞" : maxMineros) + ")";
+        String lumberButtonText = "Crear Leñador (" + leñadores + "/" +
+                (maxLeñadores == Integer.MAX_VALUE ? "∞" : maxLeñadores) + ")";
+
+        Button minerButton = createTextButton("", minerButtonText, "75 Oro");
+        Button lumberjackButton = createTextButton("", lumberButtonText, "50 Oro");
 
         houseButton.setOnAction(e -> {
             System.out.println("✅ Creando Casa...");
@@ -1885,9 +1910,23 @@ public class GameApp extends Application {
         });
 
         buttonContainer.getChildren().addAll(houseButton, barracksButton, minerButton, lumberjackButton);
-        panel.getChildren().addAll(title, separator, buttonContainer);
+        panel.getChildren().addAll(title, populationInfo, separator, buttonContainer);
 
         return panel;
+    }
+
+    // Método auxiliar para obtener límite máximo basado en casas
+    private int getMaxUnitsForHouses(int numHouses) {
+        switch (numHouses) {
+            case 0:
+                return 3;
+            case 1:
+                return 6;
+            case 2:
+                return 8;
+            default:
+                return Integer.MAX_VALUE;
+        }
     }
 
     // ==================== CONSTRUCCIÓN DE EDIFICIOS ====================
@@ -2278,6 +2317,13 @@ public class GameApp extends Application {
         try {
             // Verificar recursos antes de crear la unidad
             if (territory1 != null && territory1.getTownHall() != null) {
+                // VERIFICAR LÍMITE DE POBLACIÓN
+                if (!canCreateMoreUnits(unitType)) {
+                    System.out.println("❌ Límite de población alcanzado para " + unitType);
+                    showPopulationLimitWarning(unitType);
+                    return;
+                }
+
                 Map<ResourceType, Integer> unitCost = new HashMap<>();
 
                 // Definir costos según el tipo de unidad
@@ -2319,6 +2365,7 @@ public class GameApp extends Application {
 
                     createUnitAtPosition(unitType, imageName, validPosition.x, validPosition.y, unitSize);
 
+                    // Añadir la unidad al backend
                     territory1.getTownHall().createUnit(unitType);
 
                 } else {
@@ -2339,6 +2386,238 @@ public class GameApp extends Application {
                 }
                 updateResourceDisplay();
             }
+        }
+    }
+
+    // Método para verificar límites de población
+    private boolean canCreateMoreUnits(String unitType) {
+        if (territory1 == null || territory1.getTownHall() == null) {
+            return false;
+        }
+
+        // Obtener número de casas
+        int numHouses = territory1.getTownHall().getHouses().size();
+
+        // Límites basados en casas:
+        // - 0 casas: máximo 3 mineros y 3 leñadores
+        // - 1 casa: máximo 6 de cada uno
+        // - 2 casas: máximo 8 de cada uno
+        // - 3+ casas: ilimitado
+
+        int maxUnits;
+        switch (numHouses) {
+            case 0:
+                maxUnits = 3;
+                break;
+            case 1:
+                maxUnits = 6;
+                break;
+            case 2:
+                maxUnits = 8;
+                break;
+            default:
+                maxUnits = Integer.MAX_VALUE; // Sin límite para 3+ casas
+        }
+
+        // Contar unidades existentes del tipo especificado
+        int currentUnits = countUnitsOfType(unitType);
+
+        System.out.println("📊 Verificación población: " + unitType +
+                " - Casas: " + numHouses +
+                " - Actuales: " + currentUnits +
+                " - Máximo: " + maxUnits);
+
+        return currentUnits < maxUnits;
+    }
+
+    // Método para contar unidades existentes de un tipo específico
+    private int countUnitsOfType(String unitType) {
+        int count = 0;
+
+        // Primero contar en el backend (si existe el método)
+        if(unitType.equalsIgnoreCase("minero")) {  // ← minúsculas
+            return territory1.getTownHall().getMiners().size();
+        }
+        else if (unitType.equalsIgnoreCase("leñador")){  // ← minúsculas y revisa la codificación
+            return territory1.getTownHall().getWoodCutters().size();
+        }
+
+        return count;
+    }
+
+    // Método para mostrar advertencia de límite de población
+    private void showPopulationLimitWarning(String unitType) {
+        Stage warningStage = new Stage();
+        warningStage.initModality(Modality.APPLICATION_MODAL);
+        warningStage.initStyle(StageStyle.TRANSPARENT);
+        warningStage.setTitle("Límite de población alcanzado");
+
+        VBox warningPanel = new VBox(15);
+        warningPanel.setPadding(new Insets(25, 30, 25, 30));
+        warningPanel.setAlignment(Pos.CENTER);
+        warningPanel.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.50); " +
+                        "-fx-background-radius: 15; " +
+                        "-fx-border-color: #e74c3c; " + // Rojo para error
+                        "-fx-border-width: 2; " +
+                        "-fx-border-radius: 15; " +
+                        "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0.5, 0, 2);"
+        );
+
+        Label warningIcon = new Label("🚫");
+        warningIcon.setStyle("-fx-font-size: 36px; -fx-padding: 0 0 5 0;");
+
+        VBox messageContainer = new VBox(5);
+        messageContainer.setAlignment(Pos.CENTER);
+
+        Label titleLabel = new Label("Límite de población alcanzado");
+        titleLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #e74c3c;");
+
+        // Obtener información actual de población
+        int numHouses = territory1 != null && territory1.getTownHall() != null ?
+                territory1.getTownHall().getHouses().size() : 0;
+        int currentUnits = countUnitsOfType(unitType);
+
+        String limitMessage = getPopulationLimitMessage(numHouses, unitType);
+
+        Label detailLabel = new Label(
+                "Ya has alcanzado el límite de " + currentUnits + " " + unitType + "s\n\n" +
+                        "Casas construidas: " + numHouses + "\n" +
+                        limitMessage + "\n\n" +
+                        "¡Construye más casas para aumentar tu población!"
+        );
+        detailLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #000000; -fx-text-alignment: center;");
+        detailLabel.setWrapText(true);
+
+        messageContainer.getChildren().addAll(titleLabel, detailLabel);
+
+        Button okButton = new Button("Entendido");
+        okButton.setPrefWidth(150);
+        okButton.setPrefHeight(38);
+        okButton.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.5); " +
+                        "-fx-background-radius: 6; " +
+                        "-fx-border-color: #e74c3c; " +
+                        "-fx-border-width: 2; " +
+                        "-fx-border-radius: 6; " +
+                        "-fx-cursor: hand; " +
+                        "-fx-text-fill: #2c3e50; " +
+                        "-fx-font-size: 12px; " +
+                        "-fx-font-weight: bold;"
+        );
+
+        okButton.setOnMouseEntered(e -> {
+            okButton.setStyle(
+                    "-fx-background-color: rgba(236, 240, 241, 0.5); " +
+                            "-fx-background-radius: 6; " +
+                            "-fx-border-color: #c0392b; " +
+                            "-fx-border-width: 2.5; " +
+                            "-fx-border-radius: 6; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-text-fill: #2c3e50; " +
+                            "-fx-font-size: 12px; " +
+                            "-fx-font-weight: bold; " +
+                            "-fx-effect: dropshadow(gaussian, rgba(192, 57, 43, 0.3), 5, 0.5, 0, 1);"
+            );
+        });
+
+        okButton.setOnMouseExited(e -> {
+            okButton.setStyle(
+                    "-fx-background-color: rgba(255, 255, 255, 0.5); " +
+                            "-fx-background-radius: 6; " +
+                            "-fx-border-color: #e74c3c; " +
+                            "-fx-border-width: 2; " +
+                            "-fx-border-radius: 6; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-text-fill: #2c3e50; " +
+                            "-fx-font-size: 12px; " +
+                            "-fx-font-weight: bold; " +
+                            "-fx-effect: null;"
+            );
+        });
+
+        okButton.setOnAction(e -> warningStage.close());
+
+        Button buildHouseButton = new Button("Construir Casa");
+        buildHouseButton.setPrefWidth(150);
+        buildHouseButton.setPrefHeight(38);
+        buildHouseButton.setStyle(
+                "-fx-background-color: rgba(46, 204, 113, 0.7); " +
+                        "-fx-background-radius: 6; " +
+                        "-fx-border-color: #27ae60; " +
+                        "-fx-border-width: 2; " +
+                        "-fx-border-radius: 6; " +
+                        "-fx-cursor: hand; " +
+                        "-fx-text-fill: white; " +
+                        "-fx-font-size: 12px; " +
+                        "-fx-font-weight: bold;"
+        );
+
+        buildHouseButton.setOnMouseEntered(e -> {
+            buildHouseButton.setStyle(
+                    "-fx-background-color: rgba(39, 174, 96, 0.8); " +
+                            "-fx-background-radius: 6; " +
+                            "-fx-border-color: #229954; " +
+                            "-fx-border-width: 2.5; " +
+                            "-fx-border-radius: 6; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-text-fill: white; " +
+                            "-fx-font-size: 12px; " +
+                            "-fx-font-weight: bold; " +
+                            "-fx-effect: dropshadow(gaussian, rgba(39, 174, 96, 0.3), 5, 0.5, 0, 1);"
+            );
+        });
+
+        buildHouseButton.setOnMouseExited(e -> {
+            buildHouseButton.setStyle(
+                    "-fx-background-color: rgba(46, 204, 113, 0.7); " +
+                            "-fx-background-radius: 6; " +
+                            "-fx-border-color: #27ae60; " +
+                            "-fx-border-width: 2; " +
+                            "-fx-border-radius: 6; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-text-fill: white; " +
+                            "-fx-font-size: 12px; " +
+                            "-fx-font-weight: bold; " +
+                            "-fx-effect: null;"
+            );
+        });
+
+        buildHouseButton.setOnAction(e -> {
+            warningStage.close();
+            // Abrir menú del TownHall para construir casa
+            showTownHallMenu(windowWidth * 0.3, windowHeight * 0.4);
+        });
+
+        HBox buttonBox = new HBox(10, okButton, buildHouseButton);
+        buttonBox.setAlignment(Pos.CENTER);
+
+        warningPanel.getChildren().addAll(warningIcon, messageContainer, buttonBox);
+
+        StackPane rootPane = new StackPane(warningPanel);
+        rootPane.setStyle("-fx-background-color: transparent;");
+        rootPane.setAlignment(Pos.CENTER);
+
+        Scene warningScene = new Scene(rootPane, 350, 300);
+        warningScene.setFill(Color.TRANSPARENT);
+
+        warningStage.initOwner(root.getScene().getWindow());
+        warningStage.setScene(warningScene);
+        warningStage.setResizable(false);
+        warningStage.showAndWait();
+    }
+
+    // Método auxiliar para obtener mensaje de límite
+    private String getPopulationLimitMessage(int numHouses, String unitType) {
+        switch (numHouses) {
+            case 0:
+                return "Límite actual: 3 " + unitType + "s (sin casas)";
+            case 1:
+                return "Límite actual: 6 " + unitType + "s (1 casa)";
+            case 2:
+                return "Límite actual: 8 " + unitType + "s (2 casas)";
+            default:
+                return "Límite actual: Ilimitado (" + numHouses + " casas)";
         }
     }
 
