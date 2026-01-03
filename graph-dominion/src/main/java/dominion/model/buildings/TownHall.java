@@ -184,22 +184,13 @@ public class TownHall {
 
 
     public void processConstructionQueue(){
-        System.out.println("Procesando construcción ---------");
-
         ConstructionOrder currentOrder = constructionQueue.peek();
         if (currentOrder != null){
             currentOrder.tick();
-            System.out.println("Tiempo restante para " + currentOrder.getType() +
-                    ": " + currentOrder.getRemainingTime() + " segundos");
-
             if (currentOrder.isComplete()){
-                System.out.println("✅ ¡CONSTRUCCIÓN COMPLETADA EN BACKEND! " + currentOrder.getType());
                 completeConstruction(currentOrder);
                 constructionQueue.poll();
-                System.out.println("Total edificios después de completar: " + ownedBuildings.size());
             }
-        } else {
-            System.out.println("No hay construcciones en cola");
         }
     }
     public void completeConstruction(ConstructionOrder order){
@@ -220,6 +211,31 @@ public class TownHall {
         }
         this.ownedBuildings.add(newBuilding);
     }
+
+    public MilitaryBase getMilitaryBase(String id){
+        MilitaryBase militaryBase = null;
+        for(Building b: ownedBuildings){
+            if(b instanceof MilitaryBase){
+                MilitaryBase mb = (MilitaryBase) b;
+                if(mb.getId().equalsIgnoreCase(id)){
+                    militaryBase = mb;
+                }
+            }
+        }
+        return militaryBase;
+
+    }
+
+    public void createUnit(String type){
+        if(type.equalsIgnoreCase("Minero"))
+            resourceCollectors.add(new Miner());
+        else
+            resourceCollectors.add(new WoodCutter());
+    }
+
+
+
+
 
 
 }

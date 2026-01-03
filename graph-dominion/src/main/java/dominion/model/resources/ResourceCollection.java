@@ -31,17 +31,21 @@ public class ResourceCollection {
         return storage.getOrDefault(type, 0);
     }
 
-    public void spend(Map<ResourceType, Integer> costMap) {
+    public boolean spend(Map<ResourceType, Integer> costMap) {
+        // Primero verificar si se puede pagar
+        if (!canAfford(costMap)) {
+            return false; // No hay suficientes recursos
+        }
         for (Map.Entry<ResourceType, Integer> entry : costMap.entrySet()) {
             ResourceType type = entry.getKey();
             int requiredAmount = entry.getValue();
 
-           if(requiredAmount > 0){
-               storage.put(
-                       type,
-                       storage.getOrDefault(type,0) - requiredAmount);
-           }
+            if (requiredAmount > 0) {
+                int currentAmount = storage.getOrDefault(type, 0);
+                storage.put(type, currentAmount - requiredAmount);
+            }
         }
+        return true; // Éxito
     }
 
     public boolean removeResource(ResourceType type, int amount) {
@@ -60,5 +64,7 @@ public class ResourceCollection {
 
         return true;
     }
+
+
 
 }

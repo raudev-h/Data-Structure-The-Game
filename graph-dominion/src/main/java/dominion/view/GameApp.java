@@ -1855,8 +1855,8 @@ public class GameApp extends Application {
 
         Button houseButton = createTextButton("🏠", "Crear Casa", "60 Madera");
         Button barracksButton = createTextButton("⚔", "Crear Cuartel", "100 Madera");
-        Button minerButton = createTextButton("⛏", "Crear Minero", "75 Oro, 25 Madera");
-        Button lumberjackButton = createTextButton("", "Crear Leñador", "50 Oro, 50 Madera");
+        Button minerButton = createTextButton("⛏", "Crear Minero", "75 Oro");
+        Button lumberjackButton = createTextButton("", "Crear Leñador", "50 Oro");
 
         houseButton.setOnAction(e -> {
             System.out.println("✅ Creando Casa...");
@@ -2276,23 +2276,179 @@ public class GameApp extends Application {
 
     private void createUnitNextToTownHall(String unitType, String imageName, double unitSize) {
         try {
-            double townHallX = windowWidth * 0.3 - 85 + 100;
-            double townHallY = windowHeight * 0.4 - 85 + 100;
-            double townHallSize = 170;
-            double spacing = 5;
+            // Verificar recursos antes de crear la unidad
+            if (territory1 != null && territory1.getTownHall() != null) {
+                Map<ResourceType, Integer> unitCost = new HashMap<>();
 
-            Position validPosition = findPositionForUnit(townHallX, townHallY, townHallSize, unitSize, spacing, unitType);
+                // Definir costos según el tipo de unidad
+                if (unitType.equals("minero")) {
+                    unitCost.put(ResourceType.GOLD, 75);
+                } else if (unitType.equals("leñador")) {
+                    unitCost.put(ResourceType.GOLD, 50);
+                }
 
-            if (validPosition == null) {
-                System.out.println("❌ No hay espacio disponible para el " + unitType);
-                return;
+                // Verificar si puede pagar
+                if (territory1.getTownHall().getStoredResources().canAfford(unitCost)) {
+                    // Restar recursos usando el método spend existente
+                    territory1.getTownHall().getStoredResources().spend(unitCost);
+                    System.out.println("✅ Recursos descontados para crear " + unitType);
+
+                    // Actualizar display de recursos
+                    updateResourceDisplay();
+
+                    // Proceder a crear la unidad visualmente
+                    double townHallX = windowWidth * 0.3 - 85 + 100;
+                    double townHallY = windowHeight * 0.4 - 85 + 100;
+                    double townHallSize = 170;
+                    double spacing = 5;
+
+                    Position validPosition = findPositionForUnit(townHallX, townHallY, townHallSize, unitSize, spacing, unitType);
+
+                    if (validPosition == null) {
+                        System.out.println("❌ No hay espacio disponible para el " + unitType);
+
+                        // Devolver recursos si no hay espacio
+                        territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD,
+                                unitCost.getOrDefault(ResourceType.GOLD, 0));
+                        territory1.getTownHall().getStoredResources().addResource(ResourceType.WOOD,
+                                unitCost.getOrDefault(ResourceType.WOOD, 0));
+                        updateResourceDisplay();
+
+                        return;
+                    }
+
+                    createUnitAtPosition(unitType, imageName, validPosition.x, validPosition.y, unitSize);
+
+                    territory1.getTownHall().createUnit(unitType);
+
+                } else {
+                    System.out.println("❌ Recursos insuficientes para crear " + unitType);
+                    showInsufficientResourcesForUnit(unitType, unitCost);
+                }
             }
-
-            createUnitAtPosition(unitType, imageName, validPosition.x, validPosition.y, unitSize);
-
         } catch (Exception e) {
             System.err.println("❌ Error al crear " + unitType + ": " + e.getMessage());
+
+            // En caso de error, devolver los recursos
+            if (territory1 != null && territory1.getTownHall() != null) {
+                Map<ResourceType, Integer> unitCost = new HashMap<>();
+                if (unitType.equals("minero")) {
+                    territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, 75);
+                } else if (unitType.equals("leñador")) {
+                    territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, 50);
+                }
+                updateResourceDisplay();
+            }
         }
+    }
+
+    // Método para mostrar advertencia de recursos insuficientes
+    private void showInsufficientResourcesForUnit(String unitType, Map<ResourceType, Integer> cost) {
+        Stage warningStage = new Stage();
+        warningStage.initModality(Modality.APPLICATION_MODAL);
+        warningStage.initStyle(StageStyle.TRANSPARENT);
+        warningStage.setTitle("Recursos insuficientes");
+
+        VBox warningPanel = new VBox(15);
+        warningPanel.setPadding(new Insets(25, 30, 25, 30));
+        warningPanel.setAlignment(Pos.CENTER);
+        warningPanel.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.50); " +
+                        "-fx-background-radius: 15; " +
+                        "-fx-border-color: #dcdde1; " +
+                        "-fx-border-width: 1; " +
+                        "-fx-border-radius: 15; " +
+                        "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0.5, 0, 2);"
+        );
+
+        Label warningIcon = new Label("⚠");
+        warningIcon.setStyle("-fx-font-size: 36px; -fx-padding: 0 0 5 0;");
+
+        VBox messageContainer = new VBox(5);
+        messageContainer.setAlignment(Pos.CENTER);
+
+        Label titleLabel = new Label("Recursos insuficientes");
+        titleLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;");
+
+        // Construir mensaje específico según el costo
+        String costMessage = "Necesitas ";
+        if (cost.containsKey(ResourceType.GOLD)) {
+            costMessage += cost.get(ResourceType.GOLD) + " Oro";
+        }
+        if (cost.containsKey(ResourceType.GOLD) && cost.containsKey(ResourceType.WOOD)) {
+            costMessage += " y ";
+        }
+        if (cost.containsKey(ResourceType.WOOD)) {
+            costMessage += cost.get(ResourceType.WOOD) + " Madera";
+        }
+        costMessage += "\npara crear un " + unitType;
+
+        Label detailLabel = new Label(costMessage);
+        detailLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #000000; -fx-text-alignment: center;");
+        detailLabel.setWrapText(true);
+
+        messageContainer.getChildren().addAll(titleLabel, detailLabel);
+
+        Button okButton = new Button("Entendido");
+        okButton.setPrefWidth(150);
+        okButton.setPrefHeight(38);
+        okButton.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.5); " +
+                        "-fx-background-radius: 6; " +
+                        "-fx-border-color: #dcdde1; " +
+                        "-fx-border-width: 1; " +
+                        "-fx-border-radius: 6; " +
+                        "-fx-cursor: hand; " +
+                        "-fx-text-fill: #2c3e50; " +
+                        "-fx-font-size: 12px; " +
+                        "-fx-font-weight: bold;"
+        );
+
+        okButton.setOnMouseEntered(e -> {
+            okButton.setStyle(
+                    "-fx-background-color: rgba(236, 240, 241, 0.5); " +
+                            "-fx-background-radius: 6; " +
+                            "-fx-border-color: #3498db; " +
+                            "-fx-border-width: 1.5; " +
+                            "-fx-border-radius: 6; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-text-fill: #2c3e50; " +
+                            "-fx-font-size: 12px; " +
+                            "-fx-font-weight: bold; " +
+                            "-fx-effect: dropshadow(gaussian, rgba(52, 152, 219, 0.3), 5, 0.5, 0, 1);"
+            );
+        });
+
+        okButton.setOnMouseExited(e -> {
+            okButton.setStyle(
+                    "-fx-background-color: rgba(255, 255, 255, 0.5); " +
+                            "-fx-background-radius: 6; " +
+                            "-fx-border-color: #dcdde1; " +
+                            "-fx-border-width: 1; " +
+                            "-fx-border-radius: 6; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-text-fill: #2c3e50; " +
+                            "-fx-font-size: 12px; " +
+                            "-fx-font-weight: bold; " +
+                            "-fx-effect: null;"
+            );
+        });
+
+        okButton.setOnAction(e -> warningStage.close());
+
+        warningPanel.getChildren().addAll(warningIcon, messageContainer, okButton);
+
+        StackPane rootPane = new StackPane(warningPanel);
+        rootPane.setStyle("-fx-background-color: transparent;");
+        rootPane.setAlignment(Pos.CENTER);
+
+        Scene warningScene = new Scene(rootPane, 300, 250);
+        warningScene.setFill(Color.TRANSPARENT);
+
+        warningStage.initOwner(root.getScene().getWindow());
+        warningStage.setScene(warningScene);
+        warningStage.setResizable(false);
+        warningStage.showAndWait();
     }
 
     // ==================== ÁRBOLES ====================
