@@ -1,6 +1,5 @@
 package dominion.view;
 
-import com.almasb.fxgl.app.GameController;
 import dominion.model.buildings.ConstructionOrder;
 import dominion.model.buildings.MilitaryBase;
 import dominion.model.buildings.UnitCreationOrder;
@@ -8,21 +7,20 @@ import dominion.model.units.Knight;
 import javafx.animation.*;
 import dominion.core.GameControler;
 import dominion.core.GameMap;
-import dominion.core.GameTimer;
 import dominion.model.buildings.TownHall;
 import dominion.model.players.Player;
 import dominion.model.resources.ResourceType;
 import dominion.model.territories.Territory;
 import javafx.application.Application;
 import javafx.application.Platform;
-import javafx.geometry.Insets;
-import javafx.geometry.Pos;
-import javafx.geometry.Rectangle2D;
+import javafx.geometry.*;
 import javafx.scene.Node;
 import javafx.scene.Scene;
+import javafx.scene.canvas.Canvas;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.effect.DropShadow;
+import javafx.scene.effect.Effect;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
@@ -40,6 +38,50 @@ public class GameApp extends Application {
     private double windowHeight;
     private Popup townHallPopup;
     private boolean isBuildingMode = false;
+    private boolean wasDragSelect = false;
+
+
+    // ==================== SELECCIÓN TIPO WINDOWS (MARQUEE) ====================
+    private Rectangle selectionRect;
+    private boolean isSelecting = false;
+    private double selectStartX;
+    private double selectStartY;
+    private final List<ImageView> selectedUnitViews = new ArrayList<>();
+
+
+    // ==================== CARGA DE IMÁGENES (classpath primero, file: como fallback) ====================
+// ==================== Image loader (classpath only, simple) ====================
+    private Image loadImage(String imageName) {
+        // Normaliza nombre
+        String name = imageName == null ? "" : imageName.trim();
+        if (name.isEmpty()) {
+            throw new IllegalArgumentException("imageName is empty");
+        }
+        if (!name.contains(".")) {
+            name = name + ".png";
+        }
+
+        // Variantes comunes: con/sin espacio antes de ( y con/sin espacios
+        String[] candidates = new String[]{
+                name,
+                name.replace(" (", "("),
+                name.replace("(", " ("),
+                name.replace(" ", ""),
+        };
+
+        for (String c : candidates) {
+            var url = getClass().getResource("/images/" + c);
+            if (url != null) {
+                return new Image(url.toExternalForm());
+            }
+        }
+
+        throw new IllegalStateException(
+                "No se encontró la imagen en /images/: " + imageName +
+                        " (verifica que exista en src/main/resources/images y que 'resources' sea Resources Root)"
+        );
+    }
+
     private ImageView buildingGhost;
     private String currentBuildingType = "";
     private final List<ImageView> placedBuildings = new ArrayList<>();
@@ -61,7 +103,6 @@ public class GameApp extends Application {
     private final Map<String, Position> buildingPositions = new HashMap<>();
 
     private BarraProgresoAnimadaManager barraProgresoManager = new BarraProgresoAnimadaManager();
-
 
 
     @Override
@@ -100,6 +141,9 @@ public class GameApp extends Application {
 
         // 7. Configurar ventana
         Scene scene = new Scene(root, windowWidth, windowHeight);
+        // ==================== INPUT (SELECCIÓN + MOVER UNIDADES) ====================
+
+        setupUnitSelectionAndMovement(scene);
         setupBuildingListeners(scene);
 
         // 8. Añadir árboles
@@ -109,9 +153,9 @@ public class GameApp extends Application {
         addMinesToMap();
 
         // 9. Crear unidades
+        createUnitNextToTownHall("leñador", "minero.png", 50);
         createUnitNextToTownHall("minero", "minero.png", 50);
-        createUnitNextToTownHall("minero", "minero.png", 50);
-        createUnitNextToTownHall("leñador", "Leñador.png", 50);
+        createUnitNextToTownHall("leñador", "leñador.png", 50);
 
         // 10. AÑADIR PANEL SUPERIOR CON TIMER INTEGRADO
         Pane topPanel = createTopPanel();
@@ -146,6 +190,11 @@ public class GameApp extends Application {
                 gameTimer.startTimer();
             }
         });
+
+        Canvas canvas = new Canvas(800, 600);
+        Pane root = new Pane(canvas);
+        stage.setScene(scene);
+        stage.show();
     }
 
     // En el método start(), después de inicializar todo:
@@ -180,6 +229,308 @@ public class GameApp extends Application {
 
             // Sincronizar con el backend
             syncConstructionsWithBackend();
+        }
+    }
+
+    private void setupUnitSelectionAndMovement(Scene scene) {
+
+        if (selectionRect == null) {
+            selectionRect = new Rectangle();
+            selectionRect.setVisible(false);
+            selectionRect.setManaged(false);
+            selectionRect.setMouseTransparent(true);
+            selectionRect.setFill(Color.color(0.2, 0.6, 1.0, 0.18));
+            selectionRect.setStroke(Color.color(0.2, 0.6, 1.0, 0.9));
+            selectionRect.getStrokeDashArray().addAll(8.0, 6.0);
+            root.getChildren().add(selectionRect);
+        }
+
+        scene.setOnMousePressed(e -> {
+            if (isGamePaused || isBuildingMode) return;
+            if (!e.isPrimaryButtonDown()) return;
+
+            isSelecting = true;
+            selectStartX = e.getX();
+            selectStartY = e.getY();
+
+            // NO limpies aquí: si es click para mover, perderías la selección
+            selectionRect.setX(selectStartX);
+            selectionRect.setY(selectStartY);
+            selectionRect.setWidth(0);
+            selectionRect.setHeight(0);
+            selectionRect.setVisible(true);
+            selectionRect.toFront();
+        });
+
+        scene.setOnMouseDragged(e -> {
+            if (isGamePaused || isBuildingMode) return;
+            if (!isSelecting) return;
+
+            double x = e.getX();
+            double y = e.getY();
+
+            double minX = Math.min(selectStartX, x);
+            double minY = Math.min(selectStartY, y);
+            double w = Math.abs(x - selectStartX);
+            double h = Math.abs(y - selectStartY);
+
+            selectionRect.setX(minX);
+            selectionRect.setY(minY);
+            selectionRect.setWidth(w);
+            selectionRect.setHeight(h);
+        });
+
+        scene.setOnMouseReleased(e -> {
+            if (isGamePaused || isBuildingMode) return;
+            if (!isSelecting) return;
+
+            double w = selectionRect.getWidth();
+            double h = selectionRect.getHeight();
+
+            selectionRect.setVisible(false);
+            isSelecting = false;
+
+            // Drag real -> selección por rectángulo
+            if (w > 6 && h > 6) {
+                if (!e.isShiftDown()) clearSelectedUnitViews();
+                selectUnitsInsideSelectionRect(true); // ya limpiamos arriba si hacía falta
+                return;
+            }
+
+            // Click normal -> seleccionar unidad o mover selección
+            handleUnitClickOrMove(e.getX(), e.getY(), e.isShiftDown());
+        });
+    }
+
+    private ImageView getUnitViewAt(double x, double y) {
+        for (int i = root.getChildren().size() - 1; i >= 0; i--) {
+            if (!(root.getChildren().get(i) instanceof ImageView iv)) continue;
+
+            if (!isWorkerUnit(iv)) continue;
+
+            Bounds b = iv.getBoundsInParent();
+            if (b.contains(x, y)) {
+                return iv;
+            }
+        }
+        return null;
+    }
+
+    private boolean isWorkerUnit(ImageView iv) {
+        Object ud = iv.getUserData();
+        if (ud instanceof String s) {
+            return s.equals("minero") || s.equals("leñador");
+        }
+        // Fallback: por id
+        String id = iv.getId();
+        return id != null && (id.startsWith("minero_") || id.startsWith("leñador_"));
+    }
+
+    private void removeFromSelection(ImageView iv) {
+        selectedUnitViews.remove(iv);
+        applySelectionStyle(iv, false); //
+    }
+
+    private void handleUnitClickOrMove(double x, double y, boolean shiftDown) {
+        ImageView clicked = getUnitViewAt(x, y);
+
+        if (clicked != null) {
+            if (!shiftDown && selectedUnitViews.contains(clicked)) {
+                removeFromSelection(clicked);   // 👈 lo creamos abajo si no existe
+                return;
+            }
+
+            // Si NO hay shift y no estaba seleccionada -> seleccionar solo esa
+            if (!shiftDown) clearSelectedUnitViews();
+
+            // Con shift: toggle (si está, se quita; si no, se agrega)
+            if (shiftDown && selectedUnitViews.contains(clicked)) {
+                removeFromSelection(clicked);
+            } else {
+                addToSelection(clicked);
+            }
+            return;
+        }
+
+        // Click en suelo: mover lo seleccionado
+        moveSelectedUnitsTo(x, y);
+        clearSelectedUnitViews();
+    }
+
+    private void moveSelectedUnitsTo(double destX, double destY) {
+
+        // Agrupar workers por tipo
+        List<ImageView> miners = new ArrayList<>();
+        List<ImageView> woodcutters = new ArrayList<>();
+
+        for (ImageView iv : selectedUnitViews) {
+            if (!isWorkerUnit(iv)) continue;
+
+            Object ud = iv.getUserData();
+            String type = (ud instanceof String s) ? s.toLowerCase() : "";
+
+            if (type.contains("minero")) miners.add(iv);
+            else woodcutters.add(iv); // leñador/lenador
+        }
+
+        double spacing = 30;  // distancia dentro del grupo
+        double padding = 20;  // distancia ENTRE grupos (anti-superposición)
+
+        // Calcula “bloques” (ancho/alto) de cada grupo
+        double[] minerSize = formationSize(miners.size(), spacing);
+        double[] woodSize  = formationSize(woodcutters.size(), spacing);
+
+        // Si solo hay un grupo, lo pones centrado en dest
+        if (!miners.isEmpty() && woodcutters.isEmpty()) {
+            moveGroupInCompactFormation(miners, destX, destY, spacing);
+            clearSelectedUnitViews();
+            return;
+        }
+        if (miners.isEmpty() && !woodcutters.isEmpty()) {
+            moveGroupInCompactFormation(woodcutters, destX, destY, spacing);
+            clearSelectedUnitViews();
+            return;
+        }
+
+        // Si hay ambos: los ponemos lado a lado
+        double totalWidth = minerSize[0] + padding + woodSize[0];
+
+        // Centro de cada bloque
+        double minerCenterX = destX - totalWidth / 2.0 + minerSize[0] / 2.0;
+        double woodCenterX  = minerCenterX + minerSize[0] / 2.0 + padding + woodSize[0] / 2.0;
+
+        double minerCenterY = destY;
+        double woodCenterY  = destY;
+
+        moveGroupInCompactFormation(miners, minerCenterX, minerCenterY, spacing);
+        moveGroupInCompactFormation(woodcutters, woodCenterX, woodCenterY, spacing);
+
+        // Quitar selección después de ordenar movimiento
+        clearSelectedUnitViews();
+    }
+
+    // Devuelve {ancho, alto} aproximados del bloque de formación
+    private double[] formationSize(int n, double spacing) {
+        if (n <= 0) return new double[]{0, 0};
+
+        int cols = (int) Math.ceil(Math.sqrt(n));
+        int rows = (int) Math.ceil((double) n / cols);
+
+        double width = (cols - 1) * spacing;
+        double height = (rows - 1) * spacing;
+
+        // si n=1 => width/height 0, igual sirve
+        return new double[]{width, height};
+    }
+
+    private void moveGroupInCompactFormation(List<ImageView> units, double cx, double cy, double spacing) {
+        int n = units.size();
+        if (n == 0) return;
+
+        int cols = (int) Math.ceil(Math.sqrt(n));
+        int rows = (int) Math.ceil((double) n / cols);
+
+        double startX = cx - (cols - 1) * spacing / 2.0;
+        double startY = cy - (rows - 1) * spacing / 2.0;
+
+        for (int i = 0; i < n; i++) {
+            int col = i % cols;
+            int row = i / cols;
+
+            double tx = startX + col * spacing;
+            double ty = startY + row * spacing;
+
+            animateMove(units.get(i), tx, ty);
+        }
+    }
+
+    private void animateMove(ImageView unit, double targetX, double targetY) {
+        double startX = unit.getX() + unit.getTranslateX();
+        double startY = unit.getY() + unit.getTranslateY();
+
+        double dx = targetX - startX;
+        double dy = targetY - startY;
+        double dist = Math.sqrt(dx * dx + dy * dy);
+
+        double speed = 160.0;
+        double seconds = Math.max(0.15, dist / speed);
+
+        TranslateTransition tt = new TranslateTransition(Duration.seconds(seconds), unit);
+        tt.setByX(dx);
+        tt.setByY(dy);
+
+        tt.setOnFinished(ev -> {
+            unit.setX(targetX);
+            unit.setY(targetY);
+            unit.setTranslateX(0);
+            unit.setTranslateY(0);
+        });
+
+        tt.play();
+    }
+
+    private void addToSelection(ImageView unit) {
+        if (selectedUnitViews.contains(unit)) return;
+
+        selectedUnitViews.add(unit);
+        applySelectionStyle(unit, true);
+    }
+
+    private void selectUnitsInsideSelectionRect(boolean shiftIgnored) {
+
+        // Bounds del rectángulo en coordenadas de SCENE
+        Bounds selScene = selectionRect.localToScene(selectionRect.getBoundsInLocal());
+
+        for (ImageView iv : getAllWorkerUnitViews()) {
+
+            // Bounds de la unidad en coordenadas de SCENE
+            Bounds unitScene = iv.localToScene(iv.getBoundsInLocal());
+
+            // Windows-style “dentro del cuadro”: usa CONTAINS, no intersects
+            if (containsFully(selScene, unitScene)) {
+                addToSelection(iv);
+            }
+        }
+    }
+
+    private boolean containsFully(Bounds outer, Bounds inner) {
+        return outer.contains(inner.getMinX(), inner.getMinY())
+                && outer.contains(inner.getMaxX(), inner.getMaxY());
+    }
+
+    private List<ImageView> getAllWorkerUnitViews() {
+        List<ImageView> units = new ArrayList<>();
+        for (var node : root.getChildren()) {
+            if (node instanceof ImageView iv && isWorkerUnit(iv)) {
+                units.add(iv);
+            }
+        }
+        return units;
+    }
+
+    private void clearSelectedUnitViews() {
+        for (ImageView u : selectedUnitViews) {
+            applySelectionStyle(u, false);
+        }
+        selectedUnitViews.clear();
+    }
+
+    private void applySelectionStyle(ImageView unit, boolean selected) {
+        if (selected) {
+            DropShadow glow = new DropShadow();
+            glow.setRadius(25);
+            glow.setSpread(0.25);
+            glow.setColor(Color.color(1.0, 0.92, 0.2, 0.95));
+            unit.setEffect(glow);
+            unit.setScaleX(1.08);
+            unit.setScaleY(1.08);
+        } else {
+            Object base = unit.getProperties().get("baseEffect");
+            if (base instanceof Effect effect) {
+                unit.setEffect(effect);
+            }
+            unit.setScaleX(1.0);
+            unit.setScaleY(1.0);
         }
     }
 
@@ -992,41 +1343,8 @@ public class GameApp extends Application {
         }
     }
 
-    // Método para verificar si una construcción está completada
-    private boolean isConstructionCompleted(ConstructionOrder order) {
-        if (order == null) return false;
-
-        try {
-            // Opción 1: Si tiene método isCompleted()
-            if (order.getClass().getMethod("isCompleted") != null) {
-                return (boolean) order.getClass().getMethod("isCompleted").invoke(order);
-            }
-
-            // Opción 2: Si tiene método isFinished()
-            else if (order.getClass().getMethod("isFinished") != null) {
-                return (boolean) order.getClass().getMethod("isFinished").invoke(order);
-            }
-
-            // Opción 3: Verificar por tiempo restante
-            else if (order.getClass().getMethod("getRemainingTime") != null) {
-                int remainingTime = (int) order.getClass().getMethod("getRemainingTime").invoke(order);
-                return remainingTime <= 0;
-            }
-
-            // Opción 4: Usar el progreso calculado
-            else {
-                double progress = calculateConstructionProgress(order);
-                return progress >= 0.999; // 99.9% completado
-            }
-
-        } catch (Exception e) {
-            System.err.println("❌ Error al verificar si está completada: " + e.getMessage());
-            return false;
-        }
-    }
-
     // Método auxiliar para obtener tiempo restante de la orden
-    private int getRemainingTimeFromOrder(ConstructionOrder order) {
+    private int getRemainingTimeFromOrder(String order) {
         try {
             if (order.getClass().getMethod("getRemainingTime") != null) {
                 return (int) order.getClass().getMethod("getRemainingTime").invoke(order);
@@ -1672,6 +1990,57 @@ public class GameApp extends Application {
         }
     }
 
+    /**
+     * Habilita/deshabilita la interacción con elementos del juego
+     */
+    private void disableGameInteractions(boolean disable) {
+        if (disable) {
+            // Deshabilitar TODOS los elementos del root excepto el overlay de pausa
+            for (int i = 0; i < root.getChildren().size(); i++) {
+                Node node = root.getChildren().get(i);
+                if (node != pauseOverlay && node != buildingGhost) {
+                    node.setMouseTransparent(true);
+                    node.setFocusTraversable(false);
+                }
+            }
+
+            // Asegurar que el overlay de pausa sea interactivo
+            if (pauseOverlay != null) {
+                pauseOverlay.setMouseTransparent(false);
+                pauseOverlay.setFocusTraversable(true);
+            }
+
+            // Deshabilitar modo construcción si está activo
+            if (isBuildingMode) {
+                cancelBuildingMode();
+            }
+
+            // Deshabilitar eventos del mouse en la escena
+            if (root.getScene() != null) {
+                root.getScene().setOnMouseMoved(null);
+                root.getScene().setOnMouseClicked(null);
+                root.getScene().setOnMousePressed(null);
+                root.setCursor(javafx.scene.Cursor.DEFAULT);
+            }
+
+            // Asegurar que el overlay esté al frente
+            if (pauseOverlay != null) {
+                pauseOverlay.toFront();
+            }
+        } else {
+            // Rehabilitar todos los elementos
+            for (Node node : root.getChildren()) {
+                node.setMouseTransparent(false);
+                node.setFocusTraversable(true);
+            }
+
+            // Rehabilitar eventos del mouse
+            if (root.getScene() != null) {
+                setupBuildingListeners(root.getScene());
+            }
+        }
+    }
+
 
     // ==================== PANEL SUPERIOR CON TIMER INTEGRADO ====================
 
@@ -1912,7 +2281,7 @@ public class GameApp extends Application {
 
     private void addInteractiveTownHall() {
         try {
-            Image townHallImage = new Image("file:src/main/resources/images/TownHall1.png");
+            Image townHallImage = loadImage("TownHall1.png");
             ImageView townHallView = new ImageView(townHallImage);
 
             double townHallSize = 170;
@@ -1920,8 +2289,8 @@ public class GameApp extends Application {
             townHallView.setFitHeight(townHallSize);
             townHallView.setPreserveRatio(true);
 
-            double townHallX = windowWidth * 0.3 - townHallSize/2;
-            double townHallY = windowHeight * 0.4 - townHallSize/2;
+            double townHallX = windowWidth * 0.3 - townHallSize / 2;
+            double townHallY = windowHeight * 0.4 - townHallSize / 2;
             townHallView.setX(townHallX + 100);
             townHallView.setY(townHallY + 100);
 
@@ -1939,7 +2308,7 @@ public class GameApp extends Application {
 
             townHallView.setOnMouseClicked(event -> {
                 System.out.println("🏰 TownHall clickeado - Abriendo menú...");
-                showTownHallMenu(townHallX + townHallSize/3, townHallY);
+                showTownHallMenu(townHallX + townHallSize / 3, townHallY);
             });
 
             townHallView.setOnMouseEntered(e -> {
@@ -2107,15 +2476,14 @@ public class GameApp extends Application {
         this.currentBuildingType = buildingType;
         boolean construir = true;
 
-        if(currentBuildingType.equalsIgnoreCase("Casa"))
+        if (currentBuildingType.equalsIgnoreCase("Casa"))
             construir = territory1.getTownHall().canCreateHouse();
-        else if(currentBuildingType.equalsIgnoreCase("Cuartel"))
+        else if (currentBuildingType.equalsIgnoreCase("Cuartel"))
             construir = territory1.getTownHall().canCreateMilitaryBase();
 
-        if(construir){
+        if (construir) {
             try {
-                String imagePath = "file:src/main/resources/images/" + buildingType + ".png";
-                Image buildingImage = new Image(imagePath);
+                Image buildingImage = loadImage(buildingType + ".png");
 
                 buildingGhost.setImage(buildingImage);
                 if (buildingType.equalsIgnoreCase("Cuartel")) {
@@ -2286,200 +2654,70 @@ public class GameApp extends Application {
         boolean creado = false;
         String buildingTypeForBackend = "";
 
-        // Determinar el tipo de construcción para el backend
-        if (currentBuildingType.equalsIgnoreCase("Casa")) {
-            buildingTypeForBackend = "HOUSE";
+        if(currentBuildingType.equalsIgnoreCase("Casa")){
             creado = territory1.getTownHall().createHouse();
-        } else if (currentBuildingType.equalsIgnoreCase("Cuartel")) {
-            buildingTypeForBackend = "MILITARY_BASE";
+        } else if(currentBuildingType.equalsIgnoreCase("Cuartel")){
             creado = territory1.getTownHall().createMilitaryBase();
         }
 
-        // Si se crea una construcción exitosamente, asegurar que el Timeline esté corriendo
-        if (creado) {
-            restartConstructionUpdateLoopIfNeeded();
-            System.out.println("▶️ Nueva construcción iniciada - Reactivando sincronización");
+        if (!creado) {
+            System.out.println("❌ Error: No se pudo crear el edificio en el backend");
+            cancelBuildingMode();
+            return;
         }
 
-        // Obtener TODAS las órdenes de construcción
-        Deque<ConstructionOrder> queue = territory1.getTownHall().getConstructionQueue();
-        System.out.println("📊 Total órdenes en cola después de crear: " + queue.size());
-
-        ConstructionOrder newOrder = null;
-
-        // Buscar la última orden (más reciente)
-        if (!queue.isEmpty()) {
-            // Usar iterator para encontrar la última
-            Iterator<ConstructionOrder> iterator = queue.iterator();
-            while (iterator.hasNext()) {
-                newOrder = iterator.next();
-            }
-
-            if (newOrder != null) {
-                String buildingId = newOrder.getBuildingId();
-
-                // Guardar posición
-                buildingPositions.put(buildingId, new Position(posX, posY));
-
-                System.out.println("📍 Posición guardada para construcción ID: " + buildingId);
-
-                // Obtener tiempo total para el tipo de edificio
-                int totalTime = getTotalBuildTimeForType(currentBuildingType);
-
-                // Verificar si esta construcción es la activa (primera en la cola)
-                ConstructionOrder activeConstruction = queue.peekFirst();
-                boolean esActiva = activeConstruction != null && activeConstruction.getBuildingId().equals(buildingId);
-
-                if (esActiva) {
-                    // Mostrar como construcción activa con barra
-                    showConstructionInProgress(posX, posY, buildingWidth, buildingHeight,
-                            currentBuildingType, buildingId, totalTime);
-                } else {
-                    // Mostrar como construcción en espera
-                    showWaitingConstruction(posX, posY, buildingWidth, buildingHeight,
-                            currentBuildingType, buildingId);
-                }
-
-                buildingTypesUnderConstruction.put(buildingId, currentBuildingType);
-
-                System.out.println("🚧 Construcción " + (esActiva ? "ACTIVA" : "EN ESPERA") +
-                        " iniciada: " + currentBuildingType +
-                        " - ID: " + buildingId +
-                        " - Posición: (" + (int)posX + ", " + (int)posY + ")");
-            }
-        } else {
-            // Si no hay órdenes, usar temporal
-            String tempId = "temp_" + System.currentTimeMillis();
-            buildingPositions.put(tempId, new Position(posX, posY));
-            buildingTypesUnderConstruction.put(tempId, currentBuildingType);
-
-            // Mostrar como construcción en espera
-            showWaitingConstruction(posX, posY, buildingWidth, buildingHeight,
-                    currentBuildingType, tempId);
-
-            System.out.println("⚠️ Construcción temporal iniciada: " + currentBuildingType);
-        }
-
-        // ACTUALIZAR RECURSOS
+        // ACTUALIZAR RECURSOS DESPUÉS DE CONSTRUIR
         updateResourceDisplay();
 
-        cancelBuildingMode();
-    }
-
-    private int getRemainingTimeFromOrder(String buildingId) {
-        if (territory1 != null && territory1.getTownHall() != null) {
-            Deque<ConstructionOrder> queue = territory1.getTownHall().getConstructionQueue();
-            for (ConstructionOrder order : queue) {
-                if (order.getBuildingId().equals(buildingId)) {
-                    return order.getRemainingTime();
-                }
-            }
-        }
-        return 0;
-    }
-
-    private double calculateConstructionProgress(ConstructionOrder order) {
-        if (order == null) return 0.0;
-
         try {
-            String buildingType = order.getType().toString();
-            String displayType = getBuildingTypeForImage(buildingType);
-            int totalTime = getTotalBuildTimeForType(displayType);
-            int remainingTime = order.getRemainingTime();
+            String imagePath = "file:src/main/resources/images/" + currentBuildingType + ".png";
+            Image buildingImage = new Image(imagePath);
 
-            if (totalTime <= 0) return 0.0;
+            ImageView buildingView = new ImageView(buildingImage);
+            buildingView.setFitWidth(buildingWidth);
+            buildingView.setFitHeight(buildingHeight);
+            buildingView.setPreserveRatio(true);
+            buildingView.setX(posX);
+            buildingView.setY(posY);
 
-            int elapsedTime = totalTime - remainingTime;
-            double progress = Math.min(1.0, Math.max(0.0, (double) elapsedTime / totalTime));
+            // Marcar como cuartel si es el caso
+            if (currentBuildingType.equalsIgnoreCase("Cuartel")) {
+                buildingView.setId("Cuartel_" + System.currentTimeMillis());
+                System.out.println("⚔️ Cuartel creado y marcado con ID: " + buildingView.getId());
+            }
 
-            return progress;
+            DropShadow shadow = new DropShadow();
+            shadow.setColor(Color.rgb(0, 0, 0, 0.5));
+            shadow.setRadius(10);
+            shadow.setSpread(0.1);
+            buildingView.setEffect(shadow);
+
+            FadeTransition fade = new FadeTransition(Duration.millis(500), buildingView);
+            fade.setFromValue(0.0);
+            fade.setToValue(1.0);
+
+            ScaleTransition scale = new ScaleTransition(Duration.millis(500), buildingView);
+            scale.setFromX(0.5);
+            scale.setFromY(0.5);
+            scale.setToX(1.0);
+            scale.setToY(1.0);
+
+            javafx.animation.ParallelTransition parallel =
+                    new javafx.animation.ParallelTransition(fade, scale);
+            parallel.play();
+
+            root.getChildren().add(buildingView);
+            placedBuildings.add(buildingView);
+            makeBuildingInteractive(buildingView, currentBuildingType);
+
+            System.out.println("✅ " + currentBuildingType + " construido en: (" + (int)posX + ", " + (int)posY + ")");
+            cancelBuildingMode();
+
         } catch (Exception e) {
-            System.err.println("❌ Error calculando progreso: " + e.getMessage());
-            return 0.0;
+            System.err.println("❌ Error al colocar edificio visualmente: " + e.getMessage());
+            cancelBuildingMode();
         }
     }
-
-    /**
-     * Habilita/deshabilita la interacción con elementos del juego
-     */
-    private void disableGameInteractions(boolean disable) {
-        if (disable) {
-            // Pausar todas las animaciones de barras
-            for (String buildingId : constructionVisuals.keySet()) {
-                barraProgresoManager.pausarAnimacion(buildingId);
-            }
-            // Deshabilitar TODOS los elementos del root excepto el overlay de pausa
-            for (int i = 0; i < root.getChildren().size(); i++) {
-                Node node = root.getChildren().get(i);
-                if (node != pauseOverlay && node != buildingGhost) {
-                    node.setMouseTransparent(true);
-                    node.setFocusTraversable(false);
-                }
-            }
-
-            // Pausar la línea de tiempo de construcciones
-            if (constructionUpdateTimeline != null) {
-                constructionUpdateTimeline.pause();
-            }
-
-            // Asegurar que el overlay de pausa sea interactivo
-            if (pauseOverlay != null) {
-                pauseOverlay.setMouseTransparent(false);
-                pauseOverlay.setFocusTraversable(true);
-            }
-
-            // Deshabilitar modo construcción si está activo
-            if (isBuildingMode) {
-                cancelBuildingMode();
-            }
-
-            // Deshabilitar eventos del mouse en la escena
-            if (root.getScene() != null) {
-                root.getScene().setOnMouseMoved(null);
-                root.getScene().setOnMouseClicked(null);
-                root.getScene().setOnMousePressed(null);
-                root.setCursor(javafx.scene.Cursor.DEFAULT);
-            }
-
-            // Asegurar que el overlay esté al frente
-            if (pauseOverlay != null) {
-                pauseOverlay.toFront();
-            }
-        } else {
-            // Reanudar todas las animaciones de barras
-            for (String buildingId : constructionVisuals.keySet()) {
-                barraProgresoManager.reanudarAnimacion(buildingId);
-            }
-            // Rehabilitar todos los elementos
-            for (Node node : root.getChildren()) {
-                node.setMouseTransparent(false);
-                node.setFocusTraversable(true);
-            }
-
-            // Reanudar la línea de tiempo de construcciones
-            if (constructionUpdateTimeline != null) {
-                constructionUpdateTimeline.play();
-            }
-
-            // Rehabilitar eventos del mouse
-            if (root.getScene() != null) {
-                setupBuildingListeners(root.getScene());
-            }
-        }
-    }
-
-    // En el método cleanupConstructions, añadir:
-    private void cleanupConstructions() {
-        if (constructionUpdateTimeline != null) {
-            constructionUpdateTimeline.stop();
-        }
-
-        constructionVisuals.clear();
-        buildingTypesUnderConstruction.clear();
-        unitTrainingMap.clear(); // Limpiar entrenamientos también
-    }
-
-
 
     // ==================== UNIDADES ====================
 
@@ -2907,7 +3145,7 @@ public class GameApp extends Application {
      */
     private void addOrganicForest() {
         try {
-            Image treeImage = new Image("file:src/main/resources/images/Arbol.png");
+            Image treeImage = loadImage("Arbol.png");
             double treeSize = 65;
 
             System.out.println("🌲 Creando bosques en esquinas...");
@@ -3231,49 +3469,57 @@ public class GameApp extends Application {
         root.getChildren().add(placeholder);
     }
 
-    private void setupBuildingListeners(Scene scene) {
-        scene.setOnMouseMoved(event -> {
-            if (isBuildingMode && buildingGhost.isVisible()) {
-                double x = event.getX() - buildingGhost.getFitWidth() / 2;
-                double y = event.getY() - buildingGhost.getFitHeight() / 2;
+    void setupBuildingListeners(Scene scene) {
 
-                buildingGhost.setX(x);
-                buildingGhost.setY(y);
+        scene.addEventHandler(javafx.scene.input.MouseEvent.MOUSE_MOVED, event -> {
+            if (!isBuildingMode || !buildingGhost.isVisible()) return;
 
-                // Verificar colisión con márgenes reducidos
-                if (checkCollisionWithReducedMargin(x, y, buildingGhost.getFitWidth(), buildingGhost.getFitHeight(), 3)) {
-                    javafx.scene.effect.ColorAdjust redTint = new javafx.scene.effect.ColorAdjust();
-                    redTint.setHue(1.0);
-                    buildingGhost.setEffect(redTint);
-                } else if (x < 0 || y < 0 ||
-                        x + buildingGhost.getFitWidth() > windowWidth ||
-                        y + buildingGhost.getFitHeight() > windowHeight) {
-                    javafx.scene.effect.ColorAdjust blueTint = new javafx.scene.effect.ColorAdjust();
-                    blueTint.setHue(-0.7);
-                    buildingGhost.setEffect(blueTint);
-                } else {
-                    buildingGhost.setEffect(null);
-                }
+            double x = event.getX() - buildingGhost.getFitWidth() / 2;
+            double y = event.getY() - buildingGhost.getFitHeight() / 2;
+
+            buildingGhost.setX(x);
+            buildingGhost.setY(y);
+
+            if (checkCollisionWithReducedMargin(x, y,
+                    buildingGhost.getFitWidth(), buildingGhost.getFitHeight(), 3)) {
+                javafx.scene.effect.ColorAdjust redTint = new javafx.scene.effect.ColorAdjust();
+                redTint.setHue(1.0);
+                buildingGhost.setEffect(redTint);
+            } else if (x < 0 || y < 0 ||
+                    x + buildingGhost.getFitWidth() > windowWidth ||
+                    y + buildingGhost.getFitHeight() > windowHeight) {
+                javafx.scene.effect.ColorAdjust redTint = new javafx.scene.effect.ColorAdjust();
+                redTint.setHue(1.0);
+                buildingGhost.setEffect(redTint);
+            } else {
+                buildingGhost.setEffect(null);
             }
+
+            event.consume(); // 👈 importante: en build mode, el mouse es del build mode
         });
 
-        scene.setOnMouseClicked(event -> {
-            if (isBuildingMode) {
+        scene.addEventHandler(javafx.scene.input.MouseEvent.MOUSE_CLICKED, event -> {
+            if (!isBuildingMode) return;
+
+            if (event.getButton() == javafx.scene.input.MouseButton.PRIMARY) {
                 placeBuilding(event.getX(), event.getY());
+                event.consume();
             }
         });
 
-        scene.setOnMousePressed(event -> {
-            if (event.isSecondaryButtonDown() && isBuildingMode) {
+        scene.addEventHandler(javafx.scene.input.MouseEvent.MOUSE_PRESSED, event -> {
+            if (!isBuildingMode) return;
+
+            if (event.getButton() == javafx.scene.input.MouseButton.SECONDARY) {
                 cancelBuildingMode();
+                event.consume();
             }
         });
     }
-
     private void setMapBackground(Pane pane, double width, double height) {
         try {
             BackgroundImage background = new BackgroundImage(
-                    new Image("file:src/main/resources/images/map_background (4).png"),
+                    loadImage("map_background(4)"),
                     BackgroundRepeat.NO_REPEAT,
                     BackgroundRepeat.NO_REPEAT,
                     BackgroundPosition.CENTER,
@@ -3584,8 +3830,7 @@ public class GameApp extends Application {
 
     private void createUnitAtPosition(String unitType, String imageName, double x, double y, double size) {
         try {
-            String imagePath = "file:src/main/resources/images/" + imageName;
-            Image unitImage = new Image(imagePath);
+            Image unitImage = loadImage(imageName);
 
             ImageView unitView = new ImageView(unitImage);
             unitView.setFitWidth(size);
@@ -3595,6 +3840,8 @@ public class GameApp extends Application {
             unitView.setY(y);
 
             unitView.setId(unitType + "_" + System.currentTimeMillis());
+            unitView.setUserData(unitType);
+
 
             DropShadow shadow = new DropShadow();
             if (unitType.equals("minero")) {
@@ -3606,6 +3853,7 @@ public class GameApp extends Application {
             }
             shadow.setRadius(8);
             unitView.setEffect(shadow);
+            unitView.getProperties().put("baseEffect", shadow);
 
             FadeTransition fade = new FadeTransition(Duration.millis(300), unitView);
             fade.setFromValue(0.0);
@@ -3775,7 +4023,7 @@ public class GameApp extends Application {
      */
     private void addMinesToMap() {
         try {
-            Image mineImage = new Image("file:src/main/resources/images/Mina.png");
+            Image mineImage = loadImage("Mina.png");
             double mineSize = 45; // Tamaño de la mina
 
             System.out.println("⛏ Creando 5 minas en el mapa...");
@@ -4818,8 +5066,8 @@ public class GameApp extends Application {
      * Busca posición compacta para caballero (uno al lado del otro)
      */
     public Position findPositionForKnightCompact(double barracksX, double barracksY,
-                                                  double barracksWidth, double barracksHeight,
-                                                  double knightSize) {
+                                                 double barracksWidth, double barracksHeight,
+                                                 double knightSize) {
         System.out.println("🔍 Buscando posición compacta para caballero...");
 
         // Calcular centro del cuartel
@@ -4991,8 +5239,7 @@ public class GameApp extends Application {
      */
     private void createKnightAtPosition(String unitType, String imageName, double x, double y, double size) {
         try {
-            String imagePath = "file:src/main/resources/images/" + imageName;
-            Image unitImage = new Image(imagePath);
+            Image unitImage = loadImage(imageName);
 
             ImageView unitView = new ImageView(unitImage);
             unitView.setFitWidth(size);
@@ -5002,6 +5249,8 @@ public class GameApp extends Application {
             unitView.setY(y);
 
             unitView.setId(unitType + "_" + System.currentTimeMillis());
+            unitView.setUserData(unitType);
+
 
             // Guardar referencia al caballero creado
             createdKnights.add(unitView);
@@ -5012,6 +5261,7 @@ public class GameApp extends Application {
             shadow.setRadius(10);
             shadow.setSpread(0.2);
             unitView.setEffect(shadow);
+            unitView.getProperties().put("baseEffect", shadow);
 
             // Animación de aparición
             FadeTransition fade = new FadeTransition(Duration.millis(500), unitView);
