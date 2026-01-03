@@ -2,6 +2,9 @@ package dominion.view;
 
 import com.almasb.fxgl.app.GameController;
 import dominion.model.buildings.ConstructionOrder;
+import dominion.model.buildings.MilitaryBase;
+import dominion.model.buildings.UnitCreationOrder;
+import dominion.model.units.Knight;
 import javafx.animation.*;
 import dominion.core.GameControler;
 import dominion.core.GameMap;
@@ -167,15 +170,182 @@ public class GameApp extends Application {
     }
 
 
-    // Método para actualizar construcciones
     private void updateConstructions() {
         // Procesar la cola de construcción del backend
         if (territory1 != null && territory1.getTownHall() != null) {
             territory1.getTownHall().processConstructionQueue();
 
+            // Procesar entrenamientos de unidades
+            processUnitTrainingQueue();
+
             // Sincronizar con el backend
             syncConstructionsWithBackend();
         }
+    }
+
+    // Nuevo método para procesar cola de entrenamientos
+    private void processUnitTrainingQueue() {
+        if (territory1 != null && territory1.getTownHall() != null) {
+            // Buscar MilitaryBase en el territorio
+            MilitaryBase militaryBase = null;
+            for (Object building : territory1.getTownHall().getOwnedBuildings()) {
+                if (building instanceof MilitaryBase) {
+                    militaryBase = (MilitaryBase) building;
+                    break;
+                }
+            }
+
+            if (militaryBase != null) {
+                // Procesar cola de entrenamiento del backend
+                militaryBase.processTrainingQueue();
+
+                // Sincronizar caballeros completados
+                syncCompletedKnights(militaryBase);
+            }
+        }
+    }
+
+    private void syncCompletedKnights(MilitaryBase militaryBase) {
+        if (militaryBase == null) return;
+
+        // Obtener caballeros del backend
+        List<Knight> backendKnights = militaryBase.getKnights();
+
+        // Verificar si hay caballeros nuevos en el backend
+        for (Knight knight : backendKnights) {
+            String unitId = knight.getId();
+
+            // Verificar si ya existe en el frontend
+            if (!isKnightInFrontend(unitId) && unitTrainingMap.containsKey(unitId)) {
+                // ¡Nuevo caballero completado!
+                System.out.println("🎉 ¡Caballero completado en backend! ID: " + unitId);
+
+                // Obtener información del entrenamiento
+                UnitTrainingInfo trainingInfo = unitTrainingMap.get(unitId);
+
+                // Crear caballero en el frontend
+                if (trainingInfo != null && trainingInfo.barracksView != null) {
+                    createCompletedKnight(unitId, trainingInfo.barracksView);
+                } else {
+                    // Si no tenemos referencia al cuartel, usar uno por defecto
+                    ImageView barracks = findNearestBarracks();
+                    if (barracks != null) {
+                        createCompletedKnight(unitId, barracks);
+                    }
+                }
+
+                // Limpiar referencia
+                unitTrainingMap.remove(unitId);
+
+                // Eliminar indicador de entrenamiento
+                removeTrainingIndicator(unitId);
+            }
+        }
+    }
+
+    private boolean isKnightInFrontend(String unitId) {
+        for (ImageView knightView : createdKnights) {
+            if (knightView.getId() != null && knightView.getId().contains(unitId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void createCompletedKnight(String unitId, ImageView barracksView) {
+        try {
+            double barracksX = barracksView.getX();
+            double barracksY = barracksView.getY();
+            double barracksWidth = barracksView.getFitWidth();
+            double barracksHeight = barracksView.getFitHeight();
+            double knightSize = 50;
+
+            // Buscar posición cerca del cuartel
+            Position position = findPositionForKnightCompact(barracksX, barracksY,
+                    barracksWidth, barracksHeight, knightSize);
+
+            if (position != null) {
+                // Cargar imagen del caballero
+                String imagePath = "file:src/main/resources/images/caballero.png";
+                Image knightImage = new Image(imagePath);
+
+                ImageView knightView = new ImageView(knightImage);
+                knightView.setFitWidth(knightSize);
+                knightView.setFitHeight(knightSize);
+                knightView.setPreserveRatio(true);
+                knightView.setX(position.x);
+                knightView.setY(position.y);
+
+                // Usar el ID real del backend
+                knightView.setId("knight_" + unitId);
+
+                // Efecto especial para caballero
+                DropShadow shadow = new DropShadow();
+                shadow.setColor(Color.rgb(184, 134, 11, 0.8));
+                shadow.setRadius(10);
+                shadow.setSpread(0.2);
+                knightView.setEffect(shadow);
+
+                // Animación de aparición
+                FadeTransition fade = new FadeTransition(Duration.millis(500), knightView);
+                fade.setFromValue(0.0);
+                fade.setToValue(1.0);
+
+                ScaleTransition scale = new ScaleTransition(Duration.millis(500), knightView);
+                scale.setFromX(0.3);
+                scale.setFromY(0.3);
+                scale.setToX(1.0);
+                scale.setToY(1.0);
+
+                // Efecto de brillo al completarse
+                DropShadow glow = new DropShadow();
+                glow.setColor(Color.rgb(255, 215, 0, 0.8));
+                glow.setRadius(20);
+
+                Timeline glowTimeline = new Timeline(
+                        new KeyFrame(Duration.millis(0), e -> knightView.setEffect(glow)),
+                        new KeyFrame(Duration.millis(1000), e -> knightView.setEffect(shadow))
+                );
+
+                ParallelTransition parallel = new ParallelTransition(fade, scale);
+                parallel.setOnFinished(e -> {
+                    glowTimeline.play();
+                    System.out.println("✨ Caballero creado exitosamente! ID: " + unitId);
+                });
+
+                // Añadir a la escena y lista
+                root.getChildren().add(knightView);
+                createdKnights.add(knightView);
+
+                // Hacer interactivo
+                makeKnightInteractive(knightView, "Caballero");
+
+                parallel.play();
+
+            } else {
+                System.out.println("⚠️ No se pudo encontrar posición para el caballero completado");
+            }
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al crear caballero completado: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private void removeTrainingIndicator(String unitId) {
+        // Eliminar vista de entrenamiento
+        Node trainingView = root.lookup("#training_" + unitId);
+        if (trainingView != null) {
+            root.getChildren().remove(trainingView);
+        }
+
+        // Eliminar barra de progreso
+        Node progressBar = root.lookup("#training_progress_" + unitId);
+        if (progressBar != null) {
+            root.getChildren().remove(progressBar);
+        }
+
+        System.out.println("🧹 Indicadores de entrenamiento eliminados para: " + unitId);
     }
 
     // Método para convertir tipo de construcción a nombre de imagen
@@ -2297,9 +2467,7 @@ public class GameApp extends Application {
         }
     }
 
-    /**
-     * Limpia todas las construcciones en progreso
-     */
+    // En el método cleanupConstructions, añadir:
     private void cleanupConstructions() {
         if (constructionUpdateTimeline != null) {
             constructionUpdateTimeline.stop();
@@ -2307,6 +2475,7 @@ public class GameApp extends Application {
 
         constructionVisuals.clear();
         buildingTypesUnderConstruction.clear();
+        unitTrainingMap.clear(); // Limpiar entrenamientos también
     }
 
 
@@ -4156,57 +4325,187 @@ public class GameApp extends Application {
         parallel.play();
     }
 
-    /**
-     * Crea una unidad de caballero (versión optimizada)
-     */
     private void createKnightUnit(Popup barracksPopup) {
         try {
-            // Verificar recursos
-            if (territory1 != null && territory1.getTownHall() != null) {
-                // Crear mapa de costos
-                Map<ResourceType, Integer> knightCost = new HashMap<>();
-                knightCost.put(ResourceType.GOLD, 50);
+            // Encontrar el cuartel más cercano
+            ImageView nearestBarracks = findNearestBarracks();
+            if (nearestBarracks == null) {
+                System.out.println("❌ No se encontró ningún cuartel");
+                return;
+            }
 
-                // Verificar si puede pagar
-                if (territory1.getTownHall().getStoredResources().canAfford(knightCost)) {
-                    // Restar recursos usando el método spend existente
-                    territory1.getTownHall().getStoredResources().spend(knightCost);
-                    System.out.println("✅ Recursos descontados exitosamente");
+            // Obtener el MilitaryBase del backend
+            MilitaryBase militaryBase = getMilitaryBaseForBarracks(nearestBarracks);
+            if (militaryBase == null) {
+                System.out.println("❌ No se encontró MilitaryBase en el backend");
+                return;
+            }
 
-                    // Actualizar display de recursos
+            // Intentar crear caballero en el backend
+            boolean knightCreated = militaryBase.createKnight();
+
+            if (knightCreated) {
+                System.out.println("✅ Orden de entrenamiento creada en backend para caballero");
+
+                // Obtener la orden de entrenamiento más reciente
+                UnitCreationOrder latestOrder = getLatestTrainingOrder(militaryBase);
+                if (latestOrder != null) {
+                    String unitId = latestOrder.getUnitId();
+
+                    // Guardar referencia para sincronización
+                    saveUnitTrainingInfo(unitId, "caballero", nearestBarracks);
+
+                    // Mostrar construcción en progreso
+                    showKnightTrainingInProgress(nearestBarracks, unitId);
+
+                    // Asegurar que el ciclo de actualización esté corriendo
+                    restartConstructionUpdateLoopIfNeeded();
+
+                    // Actualizar recursos
                     updateResourceDisplay();
 
-                    // Encontrar el cuartel más cercano
-                    ImageView nearestBarracks = findNearestBarracks();
-                    if (nearestBarracks != null) {
-                        // Crear caballero cerca del cuartel
-                        if (createKnightNextToBarracks(nearestBarracks)) {
-                            System.out.println("♞ Caballero creado exitosamente!");
-                            //Crear caballero en el backend
-
-
-
-                        } else {
-                            System.out.println("⚠️ No se pudo crear el caballero cerca del cuartel");
-                            // Devolver los recursos si no se pudo crear
-                            territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, 50);
-                            updateResourceDisplay();
-                        }
-                    } else {
-                        System.out.println("⚠️ No se encontró un cuartel para crear el caballero");
-                        // Devolver los recursos
-                        territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, 50);
-                        updateResourceDisplay();
-                    }
+                    System.out.println("♞ Orden de entrenamiento iniciada - ID: " + unitId);
                 } else {
-                    System.out.println("❌ Recursos insuficientes para crear caballero");
-                    showInsufficientResourcesForKnight();
+                    System.out.println("⚠️ Orden de entrenamiento creada pero no encontrada");
                 }
+            } else {
+                System.out.println("❌ No se pudo crear caballero (recursos insuficientes)");
+                showInsufficientResourcesForKnight();
             }
+
         } catch (Exception e) {
             System.err.println("❌ Error al crear caballero: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    // Mapa para rastrear entrenamientos en progreso
+    private final Map<String, UnitTrainingInfo> unitTrainingMap = new HashMap<>();
+
+    private class UnitTrainingInfo {
+        String unitType;
+        String barracksId;
+        ImageView barracksView;
+        long startTime;
+
+        UnitTrainingInfo(String unitType, ImageView barracksView) {
+            this.unitType = unitType;
+            this.barracksView = barracksView;
+            this.startTime = System.currentTimeMillis();
+        }
+    }
+
+    // Obtener MilitaryBase del backend para un cuartel específico
+    private MilitaryBase getMilitaryBaseForBarracks(ImageView barracksView) {
+        // Asumiendo que hay un MilitaryBase por territorio
+        if (territory1 != null && territory1.getTownHall() != null) {
+            // Buscar MilitaryBase en los edificios del territorio
+            for (Object building : territory1.getTownHall().getOwnedBuildings()) {
+                if (building instanceof MilitaryBase) {
+                    return (MilitaryBase) building;
+                }
+            }
+        }
+        return null;
+    }
+
+    // Obtener la orden de entrenamiento más reciente
+    private UnitCreationOrder getLatestTrainingOrder(MilitaryBase militaryBase) {
+        Deque<UnitCreationOrder> trainingQueue = militaryBase.getTrainingQueue();
+        if (trainingQueue.isEmpty()) {
+            return null;
+        }
+
+        // Buscar la última orden (más reciente)
+        UnitCreationOrder latest = null;
+        for (UnitCreationOrder order : trainingQueue) {
+            latest = order;
+        }
+        return latest;
+    }
+
+    // Guardar información del entrenamiento
+    private void saveUnitTrainingInfo(String unitId, String unitType, ImageView barracksView) {
+        unitTrainingMap.put(unitId, new UnitTrainingInfo(unitType, barracksView));
+    }
+
+    // Mostrar entrenamiento en progreso
+    private void showKnightTrainingInProgress(ImageView barracksView, String unitId) {
+        try {
+            double barracksX = barracksView.getX();
+            double barracksY = barracksView.getY();
+            double barracksWidth = barracksView.getFitWidth();
+
+            // Crear visualización de entrenamiento en progreso
+            Image trainingImage = new Image("file:src/main/resources/images/Construccion.png");
+            ImageView trainingView = new ImageView(trainingImage);
+
+            double size = 60; // Tamaño para indicador de entrenamiento
+            trainingView.setFitWidth(size);
+            trainingView.setFitHeight(size);
+            trainingView.setPreserveRatio(true);
+
+            // Posicionar cerca del cuartel
+            double x = barracksX + barracksWidth/2 - size/2;
+            double y = barracksY - size - 10;
+            trainingView.setX(x);
+            trainingView.setY(y);
+            trainingView.setOpacity(0.7);
+            trainingView.setId("training_" + unitId);
+
+            // Crear barra de progreso para entrenamiento
+            createTrainingProgressBar(unitId, x, y, size, 40); // 40 segundos para caballero
+
+            // Guardar referencia
+            unitTrainingMap.get(unitId).barracksView = barracksView;
+
+            // Añadir a la escena
+            root.getChildren().add(trainingView);
+
+            System.out.println("⏳ Mostrando entrenamiento en progreso para: " + unitId);
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al mostrar entrenamiento: " + e.getMessage());
+        }
+    }
+
+    // Crear barra de progreso para entrenamiento
+    private void createTrainingProgressBar(String unitId, double x, double y, double width, int totalTime) {
+        double alturaBarra = 6;
+        double barraY = y - alturaBarra - 5;
+
+        // Fondo de la barra
+        Rectangle fondo = new Rectangle(width, alturaBarra);
+        fondo.setFill(Color.rgb(100, 100, 100, 0.7));
+        fondo.setX(x);
+        fondo.setY(barraY);
+        fondo.setArcWidth(3);
+        fondo.setArcHeight(3);
+
+        // Barra de progreso
+        Rectangle barraProgreso = new Rectangle(0, alturaBarra);
+        barraProgreso.setFill(Color.rgb(184, 134, 11, 0.8)); // Dorado para caballero
+        barraProgreso.setX(x);
+        barraProgreso.setY(barraY);
+        barraProgreso.setArcWidth(3);
+        barraProgreso.setArcHeight(3);
+
+        // Animación de progreso
+        Timeline animacion = new Timeline(
+                new KeyFrame(Duration.ZERO, new KeyValue(barraProgreso.widthProperty(), 0)),
+                new KeyFrame(Duration.seconds(totalTime),
+                        new KeyValue(barraProgreso.widthProperty(), width))
+        );
+
+        animacion.setCycleCount(1);
+        animacion.play();
+
+        // Contenedor
+        Pane contenedor = new Pane(fondo, barraProgreso);
+        contenedor.setId("training_progress_" + unitId);
+        contenedor.setMouseTransparent(true);
+
+        root.getChildren().add(contenedor);
     }
 
     /**
@@ -4276,7 +4575,7 @@ public class GameApp extends Application {
                     knightSize);
 
             if (validPosition != null) {
-                createKnightAtPosition("caballero", "caballero.png", validPosition.x, validPosition.y, knightSize);
+                createKnightAtPosition("caballero", "Caballero.png", validPosition.x, validPosition.y, knightSize);
                 return true;
             } else {
                 System.out.println("❌ No se pudo encontrar espacio para el caballero");
@@ -4290,10 +4589,14 @@ public class GameApp extends Application {
         }
     }
 
+    private Map<ResourceType, Integer> getKnightCost() {
+        return Map.of(ResourceType.GOLD, 80); // Según tu backend
+    }
+
     /**
      * Busca posición compacta para caballero (uno al lado del otro)
      */
-    private Position findPositionForKnightCompact(double barracksX, double barracksY,
+    public Position findPositionForKnightCompact(double barracksX, double barracksY,
                                                   double barracksWidth, double barracksHeight,
                                                   double knightSize) {
         System.out.println("🔍 Buscando posición compacta para caballero...");
@@ -4645,7 +4948,7 @@ public class GameApp extends Application {
         Label titleLabel = new Label("Recursos insuficientes");
         titleLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #c0392b;");
 
-        Label detailLabel = new Label("Necesitas 50 Oro \npara crear un Caballero");
+        Label detailLabel = new Label("Necesitas 80 Oro \npara crear un Caballero");
         detailLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #000000; -fx-text-alignment: center;");
         detailLabel.setWrapText(true);
 
@@ -4712,6 +5015,7 @@ public class GameApp extends Application {
         warningStage.setResizable(false);
         warningStage.showAndWait();
     }
+
 
     //METODOS DE LA BARRA DE CONSTRUCCION =========
     // Reemplaza la clase BarraProgresoAnimadaManager actual con esta versión completa:
