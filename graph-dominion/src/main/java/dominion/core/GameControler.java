@@ -1,9 +1,11 @@
 package dominion.core;
 
+import com.almasb.fxgl.app.GameController;
 import dominion.model.buildings.MilitaryBase;
 import dominion.model.players.Player;
 import dominion.model.territories.Territory;
 import dominion.model.units.Unit;
+import javafx.scene.canvas.Canvas;
 
 import java.util.ArrayList;
 
@@ -15,6 +17,8 @@ public class GameControler {
     private GameMap gameMap;
     private ArrayList<Player> players;
     private boolean gameRunning;
+    private GameController gameController;
+    private Canvas canvas;
 
     //TODO:CONSTRUCTOR
     public GameControler(){
@@ -86,6 +90,28 @@ public class GameControler {
         destination.addUnit(unit);
         unit.setCurrentTerritory(destination);
     }
+
+    private ArrayList<Unit> selectedUnits = new ArrayList<>();
+
+    public void selectUnit(Unit u) {
+        if (!selectedUnits.contains(u)) {
+            selectedUnits.add(u);
+            u.selected = true;
+        }
+    }
+
+    public void clearSelection() {
+        for (Unit u : selectedUnits) {
+            u.selected = false;
+        }
+        selectedUnits.clear();
+    }
+
+    public void handleClick(double x, double y, boolean shift) {
+
+    }
+
+
 
 
 
