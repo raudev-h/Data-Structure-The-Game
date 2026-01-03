@@ -712,7 +712,7 @@ public class GameApp extends Application {
 
     private void addInteractiveTownHall() {
         try {
-            Image townHallImage = new Image("file:src/main/resources/images/TownHall1.png");
+            Image townHallImage = new Image("file:graph-dominion/src/main/resources/images/TownHall1.png");
             ImageView townHallView = new ImageView(townHallImage);
 
             double townHallSize = 170;

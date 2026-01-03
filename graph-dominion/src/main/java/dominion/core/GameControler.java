@@ -3,6 +3,7 @@ package dominion.core;
 import dominion.model.buildings.MilitaryBase;
 import dominion.model.players.Player;
 import dominion.model.territories.Territory;
+import dominion.model.units.Unit;
 
 import java.util.ArrayList;
 
@@ -75,6 +76,17 @@ public class GameControler {
         GameMap gameMap = new GameMap();
         return  gameMap;
     }
+    public void moveUnit(Unit unit, Territory destination) {
+        Territory origin = unit.getCurrentTerritory();
+
+        if (origin != null) {
+            origin.removeUnit(unit);
+        }
+
+        destination.addUnit(unit);
+        unit.setCurrentTerritory(destination);
+    }
+
 
 
 }
