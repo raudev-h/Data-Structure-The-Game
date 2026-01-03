@@ -40,6 +40,11 @@ public class GameApp extends Application {
     private boolean isBuildingMode = false;
     private boolean wasDragSelect = false;
 
+    // Añade estos campos a la clase para almacenar referencias
+    private javafx.event.EventHandler<? super javafx.scene.input.MouseEvent> savedMousePressed;
+    private javafx.event.EventHandler<? super javafx.scene.input.MouseEvent> savedMouseDragged;
+    private javafx.event.EventHandler<? super javafx.scene.input.MouseEvent> savedMouseReleased;
+
 
     // ==================== SELECCIÓN TIPO WINDOWS (MARQUEE) ====================
     private Rectangle selectionRect;
@@ -1342,7 +1347,7 @@ public class GameApp extends Application {
             return 0.0;
         }
     }
-
+    
     // Método auxiliar para obtener tiempo restante de la orden
     private int getRemainingTimeFromOrder(String order) {
         try {
@@ -1995,6 +2000,14 @@ public class GameApp extends Application {
      */
     private void disableGameInteractions(boolean disable) {
         if (disable) {
+            // GUARDAR los handlers actuales ANTES de deshabilitarlos
+            Scene scene = root.getScene();
+            if (scene != null) {
+                savedMousePressed = scene.getOnMousePressed();
+                savedMouseDragged = scene.getOnMouseDragged();
+                savedMouseReleased = scene.getOnMouseReleased();
+            }
+
             // Deshabilitar TODOS los elementos del root excepto el overlay de pausa
             for (int i = 0; i < root.getChildren().size(); i++) {
                 Node node = root.getChildren().get(i);
@@ -2016,10 +2029,12 @@ public class GameApp extends Application {
             }
 
             // Deshabilitar eventos del mouse en la escena
-            if (root.getScene() != null) {
-                root.getScene().setOnMouseMoved(null);
-                root.getScene().setOnMouseClicked(null);
-                root.getScene().setOnMousePressed(null);
+            if (scene != null) {
+                scene.setOnMouseMoved(null);
+                scene.setOnMouseClicked(null);
+                scene.setOnMousePressed(null);
+                scene.setOnMouseDragged(null);
+                scene.setOnMouseReleased(null);
                 root.setCursor(javafx.scene.Cursor.DEFAULT);
             }
 
@@ -2034,9 +2049,30 @@ public class GameApp extends Application {
                 node.setFocusTraversable(true);
             }
 
-            // Rehabilitar eventos del mouse
-            if (root.getScene() != null) {
-                setupBuildingListeners(root.getScene());
+            // Rehabilitar eventos del mouse usando los handlers guardados
+            Scene scene = root.getScene();
+            if (scene != null) {
+                // Restaurar los handlers de selección de unidades
+                if (savedMousePressed != null) {
+                    scene.setOnMousePressed(savedMousePressed);
+                }
+                if (savedMouseDragged != null) {
+                    scene.setOnMouseDragged(savedMouseDragged);
+                }
+                if (savedMouseReleased != null) {
+                    scene.setOnMouseReleased(savedMouseReleased);
+                }
+
+                // Reconfigurar listeners de construcción si es necesario
+                setupBuildingListeners(scene);
+
+                // Asegurar que los listeners de unidad se restauraron
+                System.out.println("🔄 Listeners de unidades restaurados después de pausa");
+
+                // Limpiar referencias guardadas
+                savedMousePressed = null;
+                savedMouseDragged = null;
+                savedMouseReleased = null;
             }
         }
     }
