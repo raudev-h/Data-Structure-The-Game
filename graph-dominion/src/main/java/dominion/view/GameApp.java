@@ -406,13 +406,97 @@ public class GameApp extends Application {
             animateMove(woodcutters.get(i), targetX, targetY);
         }
     }
+    /**
+     * Encuentra una mina en las coordenadas dadas (x, y)
+     */
+    private ImageView getMineAt(double x, double y) {
+        System.out.println("🔍 Buscando mina en coordenadas: (" + x + ", " + y + ")");
+
+        // Primero, buscar minas con ID explícito
+        for (Node node : root.getChildren()) {
+            if (node instanceof ImageView imageView) {
+                String id = imageView.getId();
+
+                // Verificar si tiene ID de mina
+                if (id != null && id.startsWith("Mina_")) {
+                    Bounds bounds = imageView.getBoundsInParent();
+                    System.out.println("   - Revisando mina: " + id + " - Bounds: " +
+                            bounds.getMinX() + "," + bounds.getMinY() + " -> " +
+                            bounds.getMaxX() + "," + bounds.getMaxY());
+
+                    if (bounds.contains(x, y)) {
+                        System.out.println("✅ Mina encontrada: " + id);
+                        return imageView;
+                    }
+                }
+            }
+        }
+
+        // Si no encontró por ID, buscar por UserData
+        for (Node node : root.getChildren()) {
+            if (node instanceof ImageView imageView) {
+                Object userData = imageView.getUserData();
+                if (userData instanceof String && ((String) userData).equals("mina")) {
+                    Bounds bounds = imageView.getBoundsInParent();
+                    if (bounds.contains(x, y)) {
+                        System.out.println("✅ Mina encontrada por UserData");
+                        return imageView;
+                    }
+                }
+            }
+        }
+
+        // Si no encontró, buscar por tamaño aproximado (45px)
+        for (Node node : root.getChildren()) {
+            if (node instanceof ImageView imageView) {
+                double width = imageView.getFitWidth();
+                double height = imageView.getFitHeight();
+
+                // Verificar si tiene el tamaño de una mina
+                if (Math.abs(width - 45) < 5 && Math.abs(height - 45) < 5) {
+                    Bounds bounds = imageView.getBoundsInParent();
+                    if (bounds.contains(x, y)) {
+                        System.out.println("✅ Mina encontrada por tamaño");
+                        return imageView;
+                    }
+                }
+            }
+        }
+
+        System.out.println("❌ No se encontró mina en estas coordenadas");
+        return null;
+    }
 
     private void handleUnitClickOrMove(double x, double y, boolean shiftDown) {
-        // Primero verificar si se hizo click en un árbol
+        System.out.println("🖱️ Click en coordenadas: (" + x + ", " + y + ") - Shift: " + shiftDown);
+
+        // Primero verificar si se hizo click en una mina
+        ImageView clickedMine = getMineAt(x, y);
+
+        // Verificar si hay mineros seleccionados y se clickeó una mina
+        if (clickedMine != null && !selectedUnitViews.isEmpty()) {
+            boolean hasMiner = false;
+            for (ImageView unit : selectedUnitViews) {
+                if (isMiner(unit)) {
+                    hasMiner = true;
+                    break;
+                }
+            }
+
+            if (hasMiner) {
+                System.out.println("🎯 Click en mina con mineros seleccionados - Enviando a minar...");
+                sendSelectedMinersToMine(clickedMine);
+                return;
+            } else {
+                System.out.println("🎯 Click en mina pero sin mineros seleccionados");
+            }
+        }
+
+        // Verificar si se hizo click en un árbol
         ImageView clickedTree = getTreeAt(x, y);
 
+        // Verificar si hay leñadores seleccionados y se clickeó un árbol
         if (clickedTree != null && !selectedUnitViews.isEmpty()) {
-            // Verificar si hay al menos un leñador seleccionado
             boolean hasWoodcutter = false;
             for (ImageView unit : selectedUnitViews) {
                 if (isWoodcutter(unit)) {
@@ -421,17 +505,22 @@ public class GameApp extends Application {
                 }
             }
 
-            // Si hay leñadores seleccionados y se clickeó un árbol
             if (hasWoodcutter) {
+                System.out.println("🎯 Click en árbol con leñadores seleccionados - Enviando a talar...");
                 sendSelectedWoodcuttersToTree(clickedTree);
                 return;
+            } else {
+                System.out.println("🎯 Click en árbol pero sin leñadores seleccionados");
             }
         }
 
-        // Código original...
+        // Si no se clickeó en mina o árbol, continuar con la lógica normal de selección/movimiento
+
         ImageView clicked = getUnitViewAt(x, y);
 
         if (clicked != null) {
+            System.out.println("🎯 Click en unidad: " + clicked.getId() + " - UserData: " + clicked.getUserData());
+
             if (!shiftDown && selectedUnitViews.contains(clicked)) {
                 removeFromSelection(clicked);
                 return;
@@ -448,9 +537,64 @@ public class GameApp extends Application {
         }
 
         // Click en suelo: mover lo seleccionado
-        moveSelectedUnitsTo(x, y);
-        // clearSelectedUnitViews(); // <-- COMENTA O ELIMINA ESTA LÍNEA
+        if (!selectedUnitViews.isEmpty()) {
+            System.out.println("🎯 Moviendo " + selectedUnitViews.size() + " unidades a (" + (int)x + ", " + (int)y + ")");
+            moveSelectedUnitsTo(x, y);
+        }
     }
+
+    private void moveSelectedUnitsTo(double destX, double destY) {
+
+        // Agrupar workers por tipo
+        List<ImageView> miners = new ArrayList<>();
+        List<ImageView> woodcutters = new ArrayList<>();
+
+        for (ImageView iv : selectedUnitViews) {
+            if (!isWorkerUnit(iv)) continue;
+
+            Object ud = iv.getUserData();
+            String type = (ud instanceof String s) ? s.toLowerCase() : "";
+
+            if (type.contains("minero")) miners.add(iv);
+            else woodcutters.add(iv); // leñador/lenador
+        }
+
+        double spacing = 30;  // distancia dentro del grupo
+        double padding = 20;  // distancia ENTRE grupos (anti-superposición)
+
+        // Calcula “bloques” (ancho/alto) de cada grupo
+        double[] minerSize = formationSize(miners.size(), spacing);
+        double[] woodSize  = formationSize(woodcutters.size(), spacing);
+
+        // Si solo hay un grupo, lo pones centrado en dest
+        if (!miners.isEmpty() && woodcutters.isEmpty()) {
+            moveGroupInCompactFormation(miners, destX, destY, spacing);
+            clearSelectedUnitViews();
+            return;
+        }
+        if (miners.isEmpty() && !woodcutters.isEmpty()) {
+            moveGroupInCompactFormation(woodcutters, destX, destY, spacing);
+            clearSelectedUnitViews();
+            return;
+        }
+
+        // Si hay ambos: los ponemos lado a lado
+        double totalWidth = minerSize[0] + padding + woodSize[0];
+
+        // Centro de cada bloque
+        double minerCenterX = destX - totalWidth / 2.0 + minerSize[0] / 2.0;
+        double woodCenterX  = minerCenterX + minerSize[0] / 2.0 + padding + woodSize[0] / 2.0;
+
+        double minerCenterY = destY;
+        double woodCenterY  = destY;
+
+        moveGroupInCompactFormation(miners, minerCenterX, minerCenterY, spacing);
+        moveGroupInCompactFormation(woodcutters, woodCenterX, woodCenterY, spacing);
+
+        // Quitar selección después de ordenar movimiento
+        clearSelectedUnitViews();
+    }
+
 
     // Método para obtener un árbol en las coordenadas dadas
     private ImageView getTreeAt(double x, double y) {
@@ -466,6 +610,284 @@ public class GameApp extends Application {
         }
         return null;
     }
+    private class MiningTask {
+        ImageView miner;
+        ImageView mine;
+        Timeline collectionTimeline;
+        Timeline mineLifeTimeline;
+        int goldCollected = 0;
+        boolean isActive = true;
+
+        MiningTask(ImageView miner, ImageView mine) {
+            this.miner = miner;
+            this.mine = mine;
+        }
+    }
+    private void sendSelectedMinersToMine(ImageView mine) {
+        // Filtrar solo los mineros seleccionados
+        List<ImageView> miners = new ArrayList<>();
+
+        for (ImageView unit : selectedUnitViews) {
+            if (isMiner(unit)) {
+                miners.add(unit);
+            }
+        }
+
+        if (miners.isEmpty()) {
+            System.out.println("⚠️ No hay mineros seleccionados");
+            return;
+        }
+
+        // Detener cualquier animación de movimiento actual
+        for (ImageView miner : miners) {
+            stopMiningIfActive(miner);
+
+            // Detener cualquier animación de movimiento en curso
+            miner.getTransforms().clear();
+            miner.setTranslateX(0);
+            miner.setTranslateY(0);
+        }
+
+        // Obtener posición alrededor de la mina
+        double mineX = mine.getX();
+        double mineY = mine.getY();
+        double mineWidth = mine.getFitWidth();
+        double mineHeight = mine.getFitHeight();
+
+        // Calcular formación alrededor de la mina
+        moveMinersToMine(miners, mineX, mineY, mineWidth, mineHeight);
+
+        // Iniciar minería para cada minero
+        for (ImageView miner : miners) {
+            startMining(miner, mine);
+        }
+    }
+
+    private boolean isMiner(ImageView unit) {
+        Object userData = unit.getUserData();
+        String id = unit.getId();
+        return (userData instanceof String && ((String) userData).equals("minero")) ||
+                (id != null && id.startsWith("minero_"));
+    }
+
+    private void moveMinersToMine(List<ImageView> miners, double mineX, double mineY,
+                                  double mineWidth, double mineHeight) {
+        int count = miners.size();
+        double mineCenterX = mineX + mineWidth / 2;
+        double mineCenterY = mineY + mineHeight / 2;
+        double radius = Math.max(mineWidth, mineHeight) / 2 + 60; // Distancia alrededor de la mina
+        double unitSize = 50;
+
+        for (int i = 0; i < count; i++) {
+            double angle = 2 * Math.PI * i / count;
+            double targetX = mineCenterX + Math.cos(angle) * radius - unitSize / 2;
+            double targetY = mineCenterY + Math.sin(angle) * radius - unitSize / 2;
+
+            // Asegurar que está dentro de los límites
+            targetX = Math.max(0, Math.min(targetX, windowWidth - unitSize));
+            targetY = Math.max(0, Math.min(targetY, windowHeight - unitSize));
+
+            animateMove(miners.get(i), targetX, targetY);
+        }
+    }
+
+    private void startMining(ImageView miner, ImageView mine) {
+        // Verificar si ya hay una tarea activa para este minero
+        if (activeMiningTasks.containsKey(miner)) {
+            MiningTask existingTask = activeMiningTasks.get(miner);
+            existingTask.isActive = false;
+            if (existingTask.collectionTimeline != null) {
+                existingTask.collectionTimeline.stop();
+            }
+            if (existingTask.mineLifeTimeline != null) {
+                existingTask.mineLifeTimeline.stop();
+            }
+        }
+
+        // Crear nueva tarea
+        MiningTask task = new MiningTask(miner, mine);
+
+        // Timeline para recolectar oro cada 10 segundos (10 ciclos = 100 segundos)
+        task.collectionTimeline = new Timeline(
+                new KeyFrame(Duration.seconds(10), e -> collectGoldFromMine(task))
+        );
+        task.collectionTimeline.setCycleCount(10); // 10 ciclos = 100 segundos
+
+        // Timeline para agotar la mina después de 100 segundos
+        task.mineLifeTimeline = new Timeline(
+                new KeyFrame(Duration.seconds(100), e -> depleteMine(task))
+        );
+        task.mineLifeTimeline.setCycleCount(1); // Solo una vez
+
+        // Configurar lo que pasa cuando termina la recolección
+        task.collectionTimeline.setOnFinished(e -> {
+            System.out.println("✅ Minero completó la explotación de la mina " + mine.getId());
+            task.isActive = false;
+        });
+
+        // Configurar lo que pasa cuando se agota la mina
+        task.mineLifeTimeline.setOnFinished(e -> {
+            System.out.println("⛏ Tiempo de vida de la mina " + mine.getId() + " terminado");
+        });
+
+        // Iniciar las timelines
+        task.collectionTimeline.play();
+        task.mineLifeTimeline.play();
+
+        // Guardar la tarea
+        activeMiningTasks.put(miner, task);
+
+        System.out.println("⛏ Minero comenzó a extraer oro de la mina " + mine.getId() +
+                " - 10 ciclos de 10 segundos = 100 segundos total");
+    }
+
+    private void collectGoldFromMine(MiningTask task) {
+        if (!task.isActive) return;
+
+        // Verificar que la mina aún exista
+        if (!root.getChildren().contains(task.mine)) {
+            task.isActive = false;
+            return;
+        }
+
+        // Agregar oro al TownHall
+        if (territory1 != null && territory1.getTownHall() != null) {
+            territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, 50);
+            task.goldCollected += 50;
+
+            // Actualizar display
+            Platform.runLater(() -> updateResourceDisplay());
+
+            // Mostrar efecto visual
+            showGoldCollectionEffect(task.miner, task.mine);
+
+            System.out.println("💰 +50 Oro recolectado de la mina " + task.mine.getId() +
+                    " (Ciclo: " + (task.goldCollected / 50) + "/10, Total: " + task.goldCollected + ")");
+
+            // Si ya se recolectó todo el oro, detener
+            if (task.goldCollected >= 500) { // 10 ciclos * 50 = 500
+                task.isActive = false;
+            }
+        }
+    }
+
+    private void showGoldCollectionEffect(ImageView miner, ImageView mine) {
+        // Crear texto flotante
+        Label goldLabel = new Label("+50 Oro");
+        goldLabel.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: #FFD700;");
+
+        // Posicionar entre el minero y la mina
+        double minerX = miner.getX() + miner.getFitWidth() / 2;
+        double minerY = miner.getY() + miner.getFitHeight() / 2;
+        double mineX = mine.getX() + mine.getFitWidth() / 2;
+        double mineY = mine.getY() + mine.getFitHeight() / 2;
+
+        double labelX = (minerX + mineX) / 2 - 25;
+        double labelY = (minerY + mineY) / 2;
+
+        goldLabel.setLayoutX(labelX);
+        goldLabel.setLayoutY(labelY);
+
+        root.getChildren().add(goldLabel);
+
+        // Animación del texto
+        FadeTransition fadeOut = new FadeTransition(Duration.seconds(1.5), goldLabel);
+        fadeOut.setFromValue(1.0);
+        fadeOut.setToValue(0.0);
+
+        TranslateTransition moveUp = new TranslateTransition(Duration.seconds(1.5), goldLabel);
+        moveUp.setByY(-30);
+
+        ParallelTransition parallel = new ParallelTransition(fadeOut, moveUp);
+        parallel.setOnFinished(e -> root.getChildren().remove(goldLabel));
+        parallel.play();
+
+        // Efecto de partículas de oro
+        createGoldParticles(mine);
+    }
+
+    private void createGoldParticles(ImageView mine) {
+        double mineX = mine.getX() + mine.getFitWidth() / 2;
+        double mineY = mine.getY() + mine.getFitHeight() / 2;
+
+        for (int i = 0; i < 5; i++) {
+            Circle particle = new Circle(2, Color.rgb(255, 215, 0, 0.8));
+            particle.setCenterX(mineX);
+            particle.setCenterY(mineY);
+
+            root.getChildren().add(particle);
+
+            // Animación aleatoria
+            double angle = Math.random() * 2 * Math.PI;
+            double distance = 20 + Math.random() * 30;
+
+            TranslateTransition move = new TranslateTransition(Duration.seconds(1), particle);
+            move.setByX(Math.cos(angle) * distance);
+            move.setByY(Math.sin(angle) * distance);
+
+            FadeTransition fade = new FadeTransition(Duration.seconds(1), particle);
+            fade.setFromValue(0.8);
+            fade.setToValue(0);
+
+            ParallelTransition particleAnim = new ParallelTransition(move, fade);
+            particleAnim.setOnFinished(e -> root.getChildren().remove(particle));
+            particleAnim.play();
+        }
+    }
+
+    private void depleteMine(MiningTask task) {
+        if (task.mine != null && root.getChildren().contains(task.mine)) {
+            // Detener todas las tareas relacionadas con esta mina
+            stopAllTasksForMine(task.mine);
+
+            // Detener las timelines de esta tarea
+            if (task.collectionTimeline != null) {
+                task.collectionTimeline.stop();
+            }
+            if (task.mineLifeTimeline != null) {
+                task.mineLifeTimeline.stop();
+            }
+
+            // Marcar como inactiva
+            task.isActive = false;
+
+            // Animación de desaparición de la mina
+            FadeTransition fadeOut = new FadeTransition(Duration.seconds(1), task.mine);
+            fadeOut.setFromValue(1.0);
+            fadeOut.setToValue(0.0);
+
+            fadeOut.setOnFinished(e -> {
+                root.getChildren().remove(task.mine);
+                System.out.println("⛏ Mina " + task.mine.getId() + " agotada y removida después de 100 segundos");
+            });
+
+            fadeOut.play();
+
+            // Remover la tarea del mapa
+            activeMiningTasks.remove(task.miner);
+        }
+    }
+
+    private void stopAllTasksForMine(ImageView mine) {
+        List<ImageView> toRemove = new ArrayList<>();
+
+        for (Map.Entry<ImageView, MiningTask> entry : activeMiningTasks.entrySet()) {
+            if (entry.getValue().mine == mine) {
+                entry.getValue().isActive = false;
+                if (entry.getValue().collectionTimeline != null) {
+                    entry.getValue().collectionTimeline.stop();
+                }
+                toRemove.add(entry.getKey());
+            }
+        }
+
+        for (ImageView miner : toRemove) {
+            activeMiningTasks.remove(miner);
+        }
+    }
+
+
+    private final Map<ImageView, MiningTask> activeMiningTasks = new HashMap<>();
 
     private final Map<ImageView, WoodcuttingTask> activeWoodcuttingTasks = new HashMap<>();
 
@@ -683,16 +1105,20 @@ public class GameApp extends Application {
     }
 
     private void animateMove(ImageView unit, double targetX, double targetY) {
-        // Detener cualquier animación en curso
+        // IMPORTANTE: Detener cualquier tarea activa antes de mover
+        if (isMiner(unit)) {
+            stopMiningIfActive(unit);
+        } else if (isWoodcutter(unit)) {
+            stopWoodcuttingIfActive(unit);
+        }
+
+        // Detener cualquier animación de movimiento en curso
         if (unit.getProperties().containsKey("currentAnimation")) {
             TranslateTransition oldAnimation = (TranslateTransition) unit.getProperties().get("currentAnimation");
             if (oldAnimation != null) {
                 oldAnimation.stop();
             }
         }
-
-        // Detener tala si está activa
-        stopWoodcuttingIfActive(unit);
 
         double startX = unit.getX() + unit.getTranslateX();
         double startY = unit.getY() + unit.getTranslateY();
@@ -717,6 +1143,9 @@ public class GameApp extends Application {
             unit.setTranslateX(0);
             unit.setTranslateY(0);
             unit.getProperties().remove("currentAnimation");
+
+            System.out.println("✅ " + (isMiner(unit) ? "Minero" : "Leñador") +
+                    " movido a nueva posición: (" + (int)targetX + ", " + (int)targetY + ")");
         });
 
         tt.play();
@@ -725,16 +1154,48 @@ public class GameApp extends Application {
     private void stopWoodcuttingIfActive(ImageView woodcutter) {
         if (activeWoodcuttingTasks.containsKey(woodcutter)) {
             WoodcuttingTask task = activeWoodcuttingTasks.get(woodcutter);
-            task.isActive = false;
-            if (task.collectionTimeline != null) {
-                task.collectionTimeline.stop();
+            if (task != null && task.isActive) {
+                System.out.println("🪓 CANCELANDO tala para leñador: " + woodcutter.getId());
+
+                task.isActive = false;
+
+                if (task.collectionTimeline != null) {
+                    task.collectionTimeline.stop();
+                }
+                if (task.treeLifeTimeline != null) {
+                    task.treeLifeTimeline.stop();
+                }
+
+                activeWoodcuttingTasks.remove(woodcutter);
+
+                // Mostrar efecto de cancelación
+                showWoodcuttingCancelledEffect(woodcutter);
             }
-            if (task.treeLifeTimeline != null) {
-                task.treeLifeTimeline.stop();
-            }
-            activeWoodcuttingTasks.remove(woodcutter);
-            System.out.println("🪓 Leñador detuvo la tala (movido manualmente)");
         }
+    }
+
+    private void showWoodcuttingCancelledEffect(ImageView woodcutter) {
+        Label cancelLabel = new Label("Tala Cancelada");
+        cancelLabel.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: #FF6347;");
+
+        double woodcutterX = woodcutter.getX() + woodcutter.getFitWidth() / 2;
+        double woodcutterY = woodcutter.getY();
+
+        cancelLabel.setLayoutX(woodcutterX - 40);
+        cancelLabel.setLayoutY(woodcutterY - 20);
+
+        root.getChildren().add(cancelLabel);
+
+        FadeTransition fadeOut = new FadeTransition(Duration.seconds(1.5), cancelLabel);
+        fadeOut.setFromValue(1.0);
+        fadeOut.setToValue(0.0);
+
+        TranslateTransition moveUp = new TranslateTransition(Duration.seconds(1.5), cancelLabel);
+        moveUp.setByY(-30);
+
+        ParallelTransition parallel = new ParallelTransition(fadeOut, moveUp);
+        parallel.setOnFinished(e -> root.getChildren().remove(cancelLabel));
+        parallel.play();
     }
 
 
@@ -757,56 +1218,89 @@ public class GameApp extends Application {
         animateMove(woodcutter, targetX, targetY);
     }
 
-    private void moveSelectedUnitsTo(double destX, double destY) {
+    private void stopMiningIfActive(ImageView miner) {
+        if (activeMiningTasks.containsKey(miner)) {
+            MiningTask task = activeMiningTasks.get(miner);
+            if (task != null && task.isActive) {
+                System.out.println("⛏ CANCELANDO minería para minero: " + miner.getId());
 
-        // Agrupar workers por tipo
-        List<ImageView> miners = new ArrayList<>();
-        List<ImageView> woodcutters = new ArrayList<>();
+                task.isActive = false;
 
-        for (ImageView iv : selectedUnitViews) {
-            if (!isWorkerUnit(iv)) continue;
+                // Detener timelines
+                if (task.collectionTimeline != null) {
+                    task.collectionTimeline.stop();
+                    System.out.println("   Timeline de colección detenida");
+                }
+                if (task.mineLifeTimeline != null) {
+                    task.mineLifeTimeline.stop();
+                    System.out.println("   Timeline de vida de mina detenida");
+                }
 
-            Object ud = iv.getUserData();
-            String type = (ud instanceof String s) ? s.toLowerCase() : "";
+                // Eliminar de la lista
+                activeMiningTasks.remove(miner);
 
-            if (type.contains("minero")) miners.add(iv);
-            else woodcutters.add(iv); // leñador/lenador
+                // Mostrar mensaje de cancelación
+                showMiningCancelledEffect(miner);
+            }
         }
+    }
 
-        double spacing = 30;  // distancia dentro del grupo
-        double padding = 20;  // distancia ENTRE grupos (anti-superposición)
+    private void showMiningCancelledEffect(ImageView miner) {
+        // Crear texto de cancelación
+        Label cancelLabel = new Label("Minería Cancelada");
+        cancelLabel.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: #FF6347;");
 
-        // Calcula “bloques” (ancho/alto) de cada grupo
-        double[] minerSize = formationSize(miners.size(), spacing);
-        double[] woodSize  = formationSize(woodcutters.size(), spacing);
+        double minerX = miner.getX() + miner.getFitWidth() / 2;
+        double minerY = miner.getY();
 
-        // Si solo hay un grupo, lo pones centrado en dest
-        if (!miners.isEmpty() && woodcutters.isEmpty()) {
-            moveGroupInCompactFormation(miners, destX, destY, spacing);
-            clearSelectedUnitViews();
-            return;
+        cancelLabel.setLayoutX(minerX - 40);
+        cancelLabel.setLayoutY(minerY - 20);
+
+        root.getChildren().add(cancelLabel);
+
+        // Animación
+        FadeTransition fadeOut = new FadeTransition(Duration.seconds(1.5), cancelLabel);
+        fadeOut.setFromValue(1.0);
+        fadeOut.setToValue(0.0);
+
+        TranslateTransition moveUp = new TranslateTransition(Duration.seconds(1.5), cancelLabel);
+        moveUp.setByY(-30);
+
+        ParallelTransition parallel = new ParallelTransition(fadeOut, moveUp);
+        parallel.setOnFinished(e -> root.getChildren().remove(cancelLabel));
+        parallel.play();
+
+        // Efecto de partículas rojas
+        createCancellationParticles(miner);
+    }
+
+    private void createCancellationParticles(ImageView miner) {
+        double minerX = miner.getX() + miner.getFitWidth() / 2;
+        double minerY = miner.getY() + miner.getFitHeight() / 2;
+
+        for (int i = 0; i < 5; i++) {
+            Circle particle = new Circle(2, Color.rgb(255, 99, 71, 0.8)); // Rojo tomate
+            particle.setCenterX(minerX);
+            particle.setCenterY(minerY);
+
+            root.getChildren().add(particle);
+
+            // Animación aleatoria
+            double angle = Math.random() * 2 * Math.PI;
+            double distance = 15 + Math.random() * 25;
+
+            TranslateTransition move = new TranslateTransition(Duration.seconds(1), particle);
+            move.setByX(Math.cos(angle) * distance);
+            move.setByY(Math.sin(angle) * distance);
+
+            FadeTransition fade = new FadeTransition(Duration.seconds(1), particle);
+            fade.setFromValue(0.8);
+            fade.setToValue(0);
+
+            ParallelTransition particleAnim = new ParallelTransition(move, fade);
+            particleAnim.setOnFinished(e -> root.getChildren().remove(particle));
+            particleAnim.play();
         }
-        if (miners.isEmpty() && !woodcutters.isEmpty()) {
-            moveGroupInCompactFormation(woodcutters, destX, destY, spacing);
-            clearSelectedUnitViews();
-            return;
-        }
-
-        // Si hay ambos: los ponemos lado a lado
-        double totalWidth = minerSize[0] + padding + woodSize[0];
-
-        // Centro de cada bloque
-        double minerCenterX = destX - totalWidth / 2.0 + minerSize[0] / 2.0;
-        double woodCenterX  = minerCenterX + minerSize[0] / 2.0 + padding + woodSize[0] / 2.0;
-
-        double minerCenterY = destY;
-        double woodCenterY  = destY;
-
-        moveGroupInCompactFormation(miners, minerCenterX, minerCenterY, spacing);
-        moveGroupInCompactFormation(woodcutters, woodCenterX, woodCenterY, spacing);
-
-        // Quitar selección después de ordenar movimiento
-        clearSelectedUnitViews();
     }
 
     // Devuelve {ancho, alto} aproximados del bloque de formación
@@ -2356,6 +2850,20 @@ public class GameApp extends Application {
                     }
                 }
 
+                // Reanudar tareas de minería
+                for (MiningTask task : activeMiningTasks.values()) {
+                    if (task.isActive) {
+                        if (task.collectionTimeline != null &&
+                                task.collectionTimeline.getStatus() == Animation.Status.PAUSED) {
+                            task.collectionTimeline.play();
+                        }
+                        if (task.mineLifeTimeline != null &&
+                                task.mineLifeTimeline.getStatus() == Animation.Status.PAUSED) {
+                            task.mineLifeTimeline.play();
+                        }
+                    }
+                }
+
                 System.out.println("▶ Juego reanudado");
             });
 
@@ -2479,7 +2987,8 @@ public class GameApp extends Application {
         }
     }
 
-    public void cleanupWoodcuttingTasks() {
+    private void cleanupAllTasks() {
+        // Limpiar tareas de tala
         for (WoodcuttingTask task : activeWoodcuttingTasks.values()) {
             if (task.collectionTimeline != null) {
                 task.collectionTimeline.stop();
@@ -2489,11 +2998,24 @@ public class GameApp extends Application {
             }
         }
         activeWoodcuttingTasks.clear();
+
+        // Limpiar tareas de minería
+        for (MiningTask task : activeMiningTasks.values()) {
+            if (task.collectionTimeline != null) {
+                task.collectionTimeline.stop();
+            }
+            if (task.mineLifeTimeline != null) {
+                task.mineLifeTimeline.stop();
+            }
+        }
+        activeMiningTasks.clear();
+
+        System.out.println("🧹 Todas las tareas de recolección limpiadas");
     }
 
     @Override
     public void stop() throws Exception {
-        cleanupWoodcuttingTasks();
+        cleanupAllTasks();
         super.stop();
     }
 
@@ -4646,6 +5168,8 @@ public class GameApp extends Application {
         mineView.setPreserveRatio(true);
         mineView.setX(x);
         mineView.setY(y);
+
+        // IMPORTANTE: Usar el mismo número que se pasa como parámetro
         mineView.setId("Mina_" + mineNumber);
 
         // Rotación aleatoria ligera
@@ -4653,13 +5177,16 @@ public class GameApp extends Application {
 
         // Efecto de sombra
         DropShadow mineShadow = new DropShadow();
-        mineShadow.setColor(Color.rgb(139, 69, 19, 0.6)); // Color marrón para minas
+        mineShadow.setColor(Color.rgb(139, 69, 19, 0.6));
         mineShadow.setRadius(8);
         mineShadow.setOffsetY(3);
         mineView.setEffect(mineShadow);
 
         // Hacer la mina interactiva
         makeMineInteractive(mineView, "Mina " + (mineNumber + 1));
+
+        // Añadir UserData para identificación adicional
+        mineView.setUserData("mina");
 
         // Animación de aparición
         FadeTransition fade = new FadeTransition(Duration.millis(500), mineView);
@@ -4681,7 +5208,7 @@ public class GameApp extends Application {
         parallel.play();
 
         System.out.println("⛏ Mina " + (mineNumber + 1) + " creada en: (" +
-                (int)x + ", " + (int)y + ")");
+                (int)x + ", " + (int)y + ") con ID: Mina_" + mineNumber);
     }
 
     /**
