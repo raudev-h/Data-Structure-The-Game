@@ -37,6 +37,7 @@ public class TownHall {
         this.currentPopulation = 0; // después podemos ajustar esto
         this.ownedBuildings = new ArrayList<>();
         this.constructionQueue = new ArrayDeque<>();
+        this.resourceCollectors = new ArrayList<>();
     }
 
     public ResourceCollection getStoredResources() {
@@ -96,6 +97,18 @@ public class TownHall {
         }
 
         return militaryBases;
+    }
+
+    public ArrayList<House> getHouses(){
+        ArrayList<House> houses = new ArrayList<>();
+
+        for(Building b: ownedBuildings){
+            if(b instanceof House house){
+                houses.add(house);
+            }
+        }
+
+        return houses;
     }
 
     public ArrayList<WoodCutter> getWoodCutters(){
