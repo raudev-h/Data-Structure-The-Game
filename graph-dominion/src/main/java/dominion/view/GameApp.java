@@ -2688,6 +2688,54 @@ public class GameApp extends Application {
         }
     }
 
+    /**
+     * Sincroniza caballeros entre backend y frontend, eliminando los muertos
+     */
+    public void syncKnightsAfterBattle() {
+        if (actualPlayer == null) return;
+
+        // Obtener caballeros del backend
+        List<Knight> backendKnights = actualPlayer.getKnights();
+        System.out.println("🔄 Sincronizando caballeros después de batalla...");
+        System.out.println("   Caballeros en backend: " + backendKnights.size());
+        System.out.println("   Caballeros en frontend: " + createdKnights.size());
+
+        // Crear lista de IDs de caballeros del backend
+        Set<String> backendKnightIds = new HashSet<>();
+        for (Knight knight : backendKnights) {
+            backendKnightIds.add(knight.getId());
+        }
+
+        // Encontrar caballeros en frontend que ya no están en backend
+        List<ImageView> knightsToRemove = new ArrayList<>();
+        for (ImageView knightView : createdKnights) {
+            String knightId = extractKnightId(knightView.getId());
+            if (knightId != null && !backendKnightIds.contains(knightId)) {
+                // Este caballero murió en el backend
+                knightsToRemove.add(knightView);
+                System.out.println("💀 Caballero a eliminar: " + knightId);
+            }
+        }
+
+        // Eliminar caballeros muertos
+        for (ImageView deadKnight : knightsToRemove) {
+            removeKnightFromFrontend(deadKnight);
+        }
+
+        // Actualizar display
+        updateAttackDisplay();
+    }
+
+    /**
+     * Extrae el ID del caballero del ID del ImageView
+     */
+    private String extractKnightId(String viewId) {
+        if (viewId == null || !viewId.startsWith("knight_")) {
+            return null;
+        }
+        return viewId.substring(7); // Remover "knight_" del inicio
+    }
+
     private boolean isKnightInFrontend(String unitId) {
         for (ImageView knightView : createdKnights) {
             if (knightView.getId() != null && knightView.getId().contains(unitId)) {
@@ -8115,6 +8163,115 @@ public class GameApp extends Application {
 
     public static Set<Integer> getConqueredTerritories() {
         return new HashSet<>(conqueredTerritories);
+    }
+
+    // Método para obtener la lista de caballeros del frontend
+    public List<ImageView> getCreatedKnights() {
+        return new ArrayList<>(createdKnights);
+    }
+
+    // Método para eliminar un caballero específico del frontend
+    public void removeKnightFromFrontend(ImageView knightView) {
+        if (knightView != null && root.getChildren().contains(knightView)) {
+            // Animación de muerte
+            animateKnightDeath(knightView);
+
+            // Remover después de la animación
+            Timeline removeTimeline = new Timeline(
+                    new KeyFrame(Duration.seconds(1), e -> {
+                        root.getChildren().remove(knightView);
+                        createdKnights.remove(knightView);
+                        System.out.println("♞ Caballero eliminado del frontend");
+
+                        // Actualizar display de ataque
+                        updateAttackDisplay();
+                    })
+            );
+            removeTimeline.play();
+        }
+    }
+
+    // Método para animar la muerte de un caballero
+    private void animateKnightDeath(ImageView knightView) {
+        // Efecto de desvanecimiento
+        FadeTransition fadeOut = new FadeTransition(Duration.seconds(0.8), knightView);
+        fadeOut.setFromValue(1.0);
+        fadeOut.setToValue(0.0);
+
+        // Efecto de reducción
+        ScaleTransition shrink = new ScaleTransition(Duration.seconds(0.8), knightView);
+        shrink.setFromX(1.0);
+        shrink.setFromY(1.0);
+        shrink.setToX(0.3);
+        shrink.setToY(0.3);
+
+        // Efecto de sangre (partículas rojas)
+        createBloodEffect(knightView);
+
+        // Reproducir sonido o efecto visual adicional
+        ParallelTransition deathAnimation = new ParallelTransition(fadeOut, shrink);
+        deathAnimation.play();
+    }
+
+    // Método para crear efecto de sangre
+    private void createBloodEffect(ImageView knightView) {
+        double knightX = knightView.getX() + knightView.getFitWidth() / 2;
+        double knightY = knightView.getY() + knightView.getFitHeight() / 2;
+
+        for (int i = 0; i < 8; i++) {
+            Circle bloodDrop = new Circle(2 + Math.random() * 3, Color.rgb(178, 34, 34, 0.8));
+            bloodDrop.setCenterX(knightX);
+            bloodDrop.setCenterY(knightY);
+
+            root.getChildren().add(bloodDrop);
+
+            // Animación aleatoria de salpicadura
+            double angle = Math.random() * 2 * Math.PI;
+            double distance = 20 + Math.random() * 40;
+
+            TranslateTransition move = new TranslateTransition(Duration.seconds(0.6), bloodDrop);
+            move.setByX(Math.cos(angle) * distance);
+            move.setByY(Math.sin(angle) * distance);
+
+            FadeTransition fade = new FadeTransition(Duration.seconds(0.6), bloodDrop);
+            fade.setFromValue(0.8);
+            fade.setToValue(0);
+
+            ParallelTransition bloodAnim = new ParallelTransition(move, fade);
+            bloodAnim.setOnFinished(e -> root.getChildren().remove(bloodDrop));
+            bloodAnim.play();
+        }
+    }
+
+    // Método para eliminar múltiples caballeros
+    public void removeKnightsFromFrontend(int count) {
+        System.out.println("⚔ Eliminando " + count + " caballeros del frontend...");
+
+        if (count <= 0 || createdKnights.isEmpty()) {
+            return;
+        }
+
+        // Limitar al número de caballeros disponibles
+        int knightsToRemove = Math.min(count, createdKnights.size());
+
+        // Crear copia para evitar ConcurrentModificationException
+        List<ImageView> knightsToDelete = new ArrayList<>();
+        for (int i = 0; i < knightsToRemove; i++) {
+            knightsToDelete.add(createdKnights.get(i));
+        }
+
+        // Eliminar cada caballero con un pequeño retraso para efecto visual
+        for (int i = 0; i < knightsToDelete.size(); i++) {
+            final ImageView knight = knightsToDelete.get(i);
+            final int delay = i * 200; // Retraso escalonado
+
+            Timeline delayTimeline = new Timeline(
+                    new KeyFrame(Duration.millis(delay), e -> removeKnightFromFrontend(knight))
+            );
+            delayTimeline.play();
+        }
+
+        System.out.println("💀 " + knightsToRemove + " caballeros marcados para eliminación");
     }
 
     public static void main(String[] args) {

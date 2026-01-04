@@ -6,6 +6,7 @@ import dominion.core.GameMap;
 import dominion.model.players.Player;
 import dominion.model.territories.Territory;
 import javafx.animation.*;
+import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -386,9 +387,33 @@ public class Map_Territories extends Pane {
                     // Cambiar el territorio a verde (propio)
                     conquerTerritory(territory, territoryNumber);
 
+                    // CALCULAR Y ELIMINAR CABALLEROS MUERTOS DEL FRONTEND
+                    int deadKnights = principalPlayer.calculateDeadKnights(actual);
+                    if (deadKnights > 0) {
+                        System.out.println("💀 " + deadKnights + " caballeros murieron en batalla");
+
+                        // Eliminar caballeros del frontend
+                        gameApp.removeKnightsFromFrontend(deadKnights);
+
+                        // Mostrar mensaje de bajas
+                        showCasualtyMessage(deadKnights);
+                    }
+
                 } else if (attackResult.equals(AttackResult.DEFEAT)) {
+                    System.out.println("💀 DERROTA TOTAL - Mostrando pantalla de derrota");
+
                     // Mostrar pantalla de derrota
                     showDefeatScreen();
+
+                    // Eliminar TODOS los caballeros del frontend
+                    int totalKnights = principalPlayer.getKnights().size();
+                    if (totalKnights > 0) {
+                        System.out.println("💀 Todos los " + totalKnights + " caballeros murieron");
+                        gameApp.removeKnightsFromFrontend(totalKnights);
+                    }
+
+                    // Deshabilitar todos los territorios enemigos (no se puede seguir atacando)
+                    disableAllEnemyTerritories();
                 }
 
                 FadeTransition flash = new FadeTransition(Duration.millis(150), territory);
@@ -397,6 +422,17 @@ public class Map_Territories extends Pane {
                 flash.setAutoReverse(true);
                 flash.setCycleCount(2);
                 flash.play();
+
+                if(attackResult.equals(AttackResult.VICTORY) || attackResult.equals(AttackResult.DEFEAT)) {
+                    // Sincronizar caballeros después de la batalla
+                    Platform.runLater(() -> {
+                        // Pequeño retraso para asegurar que el backend se actualizó
+                        Timeline syncDelay = new Timeline(
+                                new KeyFrame(Duration.millis(500), ex -> gameApp.syncKnightsAfterBattle())
+                        );
+                        syncDelay.play();
+                    });
+                }
             }
             else{
                 showNotAdjacentAlert();
@@ -450,6 +486,51 @@ public class Map_Territories extends Pane {
             }
 
             hideSimpleDefenseInfo();
+        });
+    }
+
+    /**
+     * Muestra mensaje de bajas después de una batalla
+     */
+    private void showCasualtyMessage(int deadKnights) {
+        Platform.runLater(() -> {
+            // Crear mensaje flotante
+            Label casualtyLabel = new Label("💀 " + deadKnights + " caballeros caídos");
+            casualtyLabel.setStyle(
+                    "-fx-font-size: 14px; " +
+                            "-fx-font-weight: bold; " +
+                            "-fx-text-fill: #e74c3c; " +
+                            "-fx-background-color: rgba(0, 0, 0, 0.7); " +
+                            "-fx-background-radius: 10; " +
+                            "-fx-padding: 8 15;"
+            );
+
+            // Posicionar en el centro inferior
+            double x = (getWidth() - 150) / 2;
+            double y = getHeight() * 0.7;
+            casualtyLabel.setLayoutX(x);
+            casualtyLabel.setLayoutY(y);
+
+            getChildren().add(casualtyLabel);
+
+            // Animación de aparición y desaparición
+            casualtyLabel.setOpacity(0);
+
+            FadeTransition fadeIn = new FadeTransition(Duration.millis(500), casualtyLabel);
+            fadeIn.setToValue(1.0);
+
+            TranslateTransition moveUp = new TranslateTransition(Duration.seconds(2), casualtyLabel);
+            moveUp.setByY(-50);
+
+            FadeTransition fadeOut = new FadeTransition(Duration.millis(500), casualtyLabel);
+            fadeOut.setToValue(0);
+            fadeOut.setDelay(Duration.seconds(1.5));
+
+            fadeOut.setOnFinished(e -> getChildren().remove(casualtyLabel));
+
+            ParallelTransition animation = new ParallelTransition(fadeIn, moveUp);
+            SequentialTransition sequence = new SequentialTransition(animation, fadeOut);
+            sequence.play();
         });
     }
 
@@ -695,14 +776,305 @@ public class Map_Territories extends Pane {
     }
 
     /**
-     * Muestra pantalla de derrota
+     * Muestra la pantalla de derrota con overlay oscuro
      */
     private void showDefeatScreen() {
-        // Implementación similar a showVictoryScreen pero con rojo
-        // Podrías añadir esto si quieres
-        System.out.println("💀 Mostrar pantalla de derrota");
+        if (isVictoryShowing) return;
+        isVictoryShowing = true;
+
+        // Crear overlay oscuro que cubra TODA la pantalla
+        victoryOverlay = new StackPane();
+
+        // IMPORTANTE: Usar fondo negro con 85% opacidad para efecto anochecer
+        victoryOverlay.setStyle("-fx-background-color: rgba(0, 0, 0, 0.85);");
+
+        // CRÍTICO: Asegurar que cubra toda el área visible
+        victoryOverlay.setMinSize(Region.USE_COMPUTED_SIZE, Region.USE_COMPUTED_SIZE);
+        victoryOverlay.setPrefSize(getWidth(), getHeight());
+        victoryOverlay.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
+
+        // Vincular tamaño al contenedor principal para que se ajuste automáticamente
+        victoryOverlay.prefWidthProperty().bind(widthProperty());
+        victoryOverlay.prefHeightProperty().bind(heightProperty());
+
+        // IMPORTANTE: Permitir interacción con el botón pero NO bloquear completamente
+        victoryOverlay.setMouseTransparent(false);
+
+        // Panel de derrota
+        VBox defeatPanel = createDefeatPanel();
+        defeatPanel.setOpacity(0);
+        defeatPanel.setScaleX(0.9);
+        defeatPanel.setScaleY(0.9);
+
+        victoryOverlay.getChildren().add(defeatPanel);
+        StackPane.setAlignment(defeatPanel, Pos.CENTER);
+
+        // Añadir overlay a la escena
+        getChildren().add(victoryOverlay);
+        victoryOverlay.toFront();
+
+        // Forzar layout para asegurar que cubre toda el área
+        victoryOverlay.layout();
+
+        // Animación de entrada
+        victoryOverlay.setOpacity(0); // Comienza transparente
+
+        FadeTransition overlayFade = new FadeTransition(Duration.millis(500), victoryOverlay);
+        overlayFade.setToValue(1.0);
+
+        FadeTransition panelFade = new FadeTransition(Duration.millis(400), defeatPanel);
+        panelFade.setFromValue(0);
+        panelFade.setToValue(1);
+        panelFade.setDelay(Duration.millis(100));
+
+        ScaleTransition panelScale = new ScaleTransition(Duration.millis(400), defeatPanel);
+        panelScale.setFromX(0.9);
+        panelScale.setFromY(0.9);
+        panelScale.setToX(1.0);
+        panelScale.setToY(1.0);
+        panelScale.setDelay(Duration.millis(100));
+        panelScale.setInterpolator(javafx.animation.Interpolator.EASE_OUT);
+
+        ParallelTransition entrance = new ParallelTransition(overlayFade, panelFade, panelScale);
+        entrance.play();
+
+        System.out.println("💀 Mostrando pantalla de derrota");
+        System.out.println("📏 Tamaño overlay: " + getWidth() + "x" + getHeight());
     }
 
+    /**
+     * Crea el panel de derrota con la imagen y botón para salir al menú
+     */
+    private VBox createDefeatPanel() {
+        VBox panel = new VBox(20);
+        panel.setAlignment(Pos.CENTER);
+        panel.setPadding(new Insets(30, 40, 30, 40));
+        panel.setMaxWidth(400);
+        panel.setMaxHeight(500);
+
+        // MISMO estilo EXACTO pero con rojo para derrota
+        panel.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.50); " +
+                        "-fx-background-radius: 15; " +
+                        "-fx-border-color: #e74c3c; " + // Rojo para derrota
+                        "-fx-border-width: 2; " +
+                        "-fx-border-radius: 15; " +
+                        "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.15), 15, 0.5, 0, 3);"
+        );
+
+        try {
+            // Cargar imagen de derrota
+            Image defeatImage = new Image("file:src/main/resources/images/Derrota.png");
+            ImageView defeatImageView = new ImageView(defeatImage);
+            defeatImageView.setPreserveRatio(true);
+            defeatImageView.setFitWidth(250);
+
+            // Título
+            Label titleLabel = new Label("¡DERROTA!");
+            titleLabel.setStyle("-fx-font-size: 28px; -fx-font-weight: bold; -fx-text-fill: #e74c3c;");
+
+            // Mensaje de derrota
+            Label messageLabel = new Label("Tu ejército ha sido derrotado\n¡Inténtalo de nuevo!");
+            messageLabel.setStyle("-fx-font-size: 18px; -fx-text-fill: #2c3e50; -fx-font-weight: bold; -fx-text-alignment: center;");
+            messageLabel.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
+
+            // Separador elegante (rojo)
+            Region separator = new Region();
+            separator.setPrefHeight(2);
+            separator.setPrefWidth(200);
+            separator.setStyle("-fx-background-color: linear-gradient(to right, transparent, #e74c3c, transparent);");
+
+            // Botón para SALIR AL MENÚ (cierra toda la aplicación)
+            Button exitToMenuButton = createDefeatButton("SALIR AL MENÚ");
+            exitToMenuButton.setOnAction(e -> {
+                System.out.println("🚪 Saliendo al menú principal...");
+                hideDefeatScreen();
+
+                // Cerrar la ventana principal de GameApp
+                if (gameApp != null) {
+                    Platform.runLater(() -> {
+                        // Obtener el Stage principal y cerrarlo
+                        Stage mainStage = (Stage) gameApp.getSceneContainer().getScene().getWindow();
+                        if (mainStage != null) {
+                            mainStage.close();
+                            System.out.println("✅ Ventana principal cerrada");
+                        }
+                    });
+                }
+            });
+
+            panel.getChildren().addAll(
+                    defeatImageView,
+                    titleLabel,
+                    messageLabel,
+                    separator,
+                    exitToMenuButton
+            );
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al cargar imagen de derrota: " + e.getMessage());
+
+            // Placeholder si no se carga la imagen
+            Label defeatText = new Label("¡DERROTA!\nTu ejército ha sido derrotado\n¡Inténtalo de nuevo!");
+            defeatText.setStyle("-fx-font-size: 24px; -fx-font-weight: bold; -fx-text-fill: #e74c3c; -fx-text-alignment: center;");
+            defeatText.setWrapText(true);
+            defeatText.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
+
+            Button exitToMenuButton = createDefeatButton("SALIR AL MENÚ");
+            exitToMenuButton.setOnAction(ex -> {
+                hideDefeatScreen();
+                // Cerrar la ventana principal
+                Stage mainStage = (Stage) gameApp.getSceneContainer().getScene().getWindow();
+                if (mainStage != null) {
+                    mainStage.close();
+                }
+            });
+
+            panel.getChildren().addAll(defeatText, exitToMenuButton);
+        }
+
+        return panel;
+    }
+
+    /**
+     * Crea botón para pantalla de derrota
+     */
+    private Button createDefeatButton(String text) {
+        HBox buttonContent = new HBox(8);
+        buttonContent.setAlignment(Pos.CENTER);
+        buttonContent.setPadding(new Insets(10, 25, 10, 25));
+
+        Label textLabel = new Label(text);
+        textLabel.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;");
+
+        buttonContent.getChildren().add(textLabel);
+
+        Button button = new Button();
+        button.setGraphic(buttonContent);
+        button.setPrefWidth(200);
+        button.setPrefHeight(50);
+
+        // ESTILO BASE con 50% opacidad igual que GameApp
+        String baseStyle =
+                "-fx-background-color: rgba(255, 255, 255, 0.50); " +
+                        "-fx-background-radius: 8; " +
+                        "-fx-border-color: #e74c3c; " + // Rojo para derrota
+                        "-fx-border-width: 2; " +
+                        "-fx-border-radius: 8; " +
+                        "-fx-cursor: hand; " +
+                        "-fx-text-fill: #2c3e50;";
+
+        button.setStyle(baseStyle);
+
+        // EFECTO HOVER
+        button.setOnMouseEntered(e -> {
+            String hoverStyle =
+                    "-fx-background-color: rgba(236, 240, 241, 0.50); " +
+                            "-fx-background-radius: 8; " +
+                            "-fx-border-color: #c0392b; " + // Rojo más oscuro
+                            "-fx-border-width: 2.5; " +
+                            "-fx-border-radius: 8; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-effect: dropshadow(gaussian, rgba(192, 57, 43, 0.4), 8, 0.5, 0, 2);";
+
+            button.setStyle(hoverStyle);
+            button.setScaleX(1.05);
+            button.setScaleY(1.05);
+        });
+
+        button.setOnMouseExited(e -> {
+            button.setStyle(baseStyle);
+            button.setScaleX(1.0);
+            button.setScaleY(1.0);
+        });
+
+        // Efecto al presionar
+        button.setOnMousePressed(e -> {
+            button.setStyle(
+                    "-fx-background-color: rgba(220, 220, 220, 0.50); " +
+                            "-fx-background-radius: 8; " +
+                            "-fx-border-color: #a93226; " + // Rojo aún más oscuro
+                            "-fx-border-width: 3; " +
+                            "-fx-border-radius: 8; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-text-fill: #2c3e50;"
+            );
+        });
+
+        button.setOnMouseReleased(e -> {
+            button.setStyle(baseStyle);
+        });
+
+        return button;
+    }
+
+    /**
+     * Oculta la pantalla de derrota (similar a hideVictoryScreen)
+     */
+    private void hideDefeatScreen() {
+        if (victoryOverlay == null) return;
+
+        // Obtener el panel de derrota
+        VBox defeatPanel = null;
+        for (Node node : victoryOverlay.getChildren()) {
+            if (node instanceof VBox) {
+                defeatPanel = (VBox) node;
+                break;
+            }
+        }
+
+        // Animación de salida
+        if (defeatPanel != null) {
+            FadeTransition panelFade = new FadeTransition(Duration.millis(300), defeatPanel);
+            panelFade.setToValue(0);
+
+            ScaleTransition panelScale = new ScaleTransition(Duration.millis(300), defeatPanel);
+            panelScale.setToX(0.9);
+            panelScale.setToY(0.9);
+
+            FadeTransition overlayFade = new FadeTransition(Duration.millis(400), victoryOverlay);
+            overlayFade.setToValue(0);
+            overlayFade.setDelay(Duration.millis(100));
+
+            overlayFade.setOnFinished(e -> {
+                getChildren().remove(victoryOverlay);
+                victoryOverlay = null;
+                isVictoryShowing = false;
+            });
+
+            ParallelTransition exit = new ParallelTransition(panelFade, panelScale, overlayFade);
+            exit.play();
+        } else {
+            getChildren().remove(victoryOverlay);
+            victoryOverlay = null;
+            isVictoryShowing = false;
+        }
+    }
+
+    /**
+     * Deshabilita todos los territorios enemigos después de una derrota
+     */
+    private void disableAllEnemyTerritories() {
+        // Deshabilitar territorio 1
+        if (enemyTerritory1 != null) {
+            enemyTerritory1.setOnMouseClicked(null);
+            enemyTerritory1.setOnMouseEntered(null);
+            enemyTerritory1.setOnMouseExited(null);
+            enemyTerritory1.setCursor(javafx.scene.Cursor.DEFAULT);
+            enemyTerritory1.setOpacity(0.5); // Hacerlo semi-transparente
+        }
+
+        // Deshabilitar territorio 2
+        if (enemyTerritory2 != null) {
+            enemyTerritory2.setOnMouseClicked(null);
+            enemyTerritory2.setOnMouseEntered(null);
+            enemyTerritory2.setOnMouseExited(null);
+            enemyTerritory2.setCursor(javafx.scene.Cursor.DEFAULT);
+            enemyTerritory2.setOpacity(0.5);
+        }
+
+        System.out.println("🚫 Todos los territorios enemigos deshabilitados");
+    }
     /**
      * Conquista un territorio (cambia su apariencia)
      */
