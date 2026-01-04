@@ -469,26 +469,39 @@ public class GameApp extends Application {
 
     private void handleUnitClickOrMove(double x, double y, boolean shiftDown) {
         System.out.println("🖱️ Click en coordenadas: (" + x + ", " + y + ") - Shift: " + shiftDown);
+        System.out.println("📊 Unidades seleccionadas actualmente: " + selectedUnitViews.size());
+
+        // Listar las unidades seleccionadas para depuración
+        for (ImageView unit : selectedUnitViews) {
+            System.out.println("   - " + unit.getId() + " - Tipo: " + unit.getUserData());
+        }
 
         // Primero verificar si se hizo click en una mina
         ImageView clickedMine = getMineAt(x, y);
 
         // Verificar si hay mineros seleccionados y se clickeó una mina
-        if (clickedMine != null && !selectedUnitViews.isEmpty()) {
+        if (clickedMine != null) {
+            System.out.println("🎯 Mina clickeada: " + clickedMine.getId());
+
+            // Verificar si hay mineros seleccionados
             boolean hasMiner = false;
+            List<ImageView> miners = new ArrayList<>();
+
             for (ImageView unit : selectedUnitViews) {
                 if (isMiner(unit)) {
                     hasMiner = true;
-                    break;
+                    miners.add(unit);
+                    System.out.println("   ✅ Minero seleccionado: " + unit.getId());
                 }
             }
 
             if (hasMiner) {
-                System.out.println("🎯 Click en mina con mineros seleccionados - Enviando a minar...");
+                System.out.println("🎯 Enviando " + miners.size() + " mineros a la mina...");
                 sendSelectedMinersToMine(clickedMine);
                 return;
             } else {
                 System.out.println("🎯 Click en mina pero sin mineros seleccionados");
+                // No retornar aquí, continuar con la lógica normal
             }
         }
 
@@ -496,7 +509,7 @@ public class GameApp extends Application {
         ImageView clickedTree = getTreeAt(x, y);
 
         // Verificar si hay leñadores seleccionados y se clickeó un árbol
-        if (clickedTree != null && !selectedUnitViews.isEmpty()) {
+        if (clickedTree != null) {
             boolean hasWoodcutter = false;
             for (ImageView unit : selectedUnitViews) {
                 if (isWoodcutter(unit)) {
@@ -515,7 +528,6 @@ public class GameApp extends Application {
         }
 
         // Si no se clickeó en mina o árbol, continuar con la lógica normal de selección/movimiento
-
         ImageView clicked = getUnitViewAt(x, y);
 
         if (clicked != null) {
@@ -2734,6 +2746,10 @@ public class GameApp extends Application {
 
         isGamePaused = true;
 
+        // Depurar estado antes de pausar
+        System.out.println("\n⏸️ INICIANDO PAUSA - ESTADO ACTUAL:");
+        debugSelectionState();
+
         if (gameTimer != null) {
             gameTimer.pauseTimer(); // Esto desactivará el botón automáticamente
         }
@@ -2798,8 +2814,21 @@ public class GameApp extends Application {
     }
 
     /**
-     * Oculta el menú de pausa con animación suave
+     * Método para depurar el estado de selección actual
      */
+    private void debugSelectionState() {
+        System.out.println("\n=== DEBUG ESTADO DE SELECCIÓN ===");
+        System.out.println("Unidades seleccionadas: " + selectedUnitViews.size());
+
+        for (int i = 0; i < selectedUnitViews.size(); i++) {
+            ImageView unit = selectedUnitViews.get(i);
+            System.out.println("  " + (i+1) + ". ID: " + unit.getId() +
+                    " | Tipo: " + unit.getUserData() +
+                    " | MouseTransparent: " + unit.isMouseTransparent());
+        }
+        System.out.println("================================\n");
+    }
+
     private void hidePauseMenu() {
         if (!isGamePaused || pauseOverlay == null) return;
 
@@ -2836,7 +2865,7 @@ public class GameApp extends Application {
                     constructionUpdateTimeline.play();
                 }
 
-                // Reanudar tareas de tala
+                // REANUDAR TAREAS DE TALA
                 for (WoodcuttingTask task : activeWoodcuttingTasks.values()) {
                     if (task.isActive) {
                         if (task.collectionTimeline != null &&
@@ -2850,7 +2879,7 @@ public class GameApp extends Application {
                     }
                 }
 
-                // Reanudar tareas de minería
+                // REANUDAR TAREAS DE MINERÍA (NUEVO)
                 for (MiningTask task : activeMiningTasks.values()) {
                     if (task.isActive) {
                         if (task.collectionTimeline != null &&
@@ -2881,6 +2910,34 @@ public class GameApp extends Application {
                 constructionUpdateTimeline.play();
             }
 
+            // Reanudar tareas de tala
+            for (WoodcuttingTask task : activeWoodcuttingTasks.values()) {
+                if (task.isActive) {
+                    if (task.collectionTimeline != null &&
+                            task.collectionTimeline.getStatus() == Animation.Status.PAUSED) {
+                        task.collectionTimeline.play();
+                    }
+                    if (task.treeLifeTimeline != null &&
+                            task.treeLifeTimeline.getStatus() == Animation.Status.PAUSED) {
+                        task.treeLifeTimeline.play();
+                    }
+                }
+            }
+
+            // Reanudar tareas de minería
+            for (MiningTask task : activeMiningTasks.values()) {
+                if (task.isActive) {
+                    if (task.collectionTimeline != null &&
+                            task.collectionTimeline.getStatus() == Animation.Status.PAUSED) {
+                        task.collectionTimeline.play();
+                    }
+                    if (task.mineLifeTimeline != null &&
+                            task.mineLifeTimeline.getStatus() == Animation.Status.PAUSED) {
+                        task.mineLifeTimeline.play();
+                    }
+                }
+            }
+
             System.out.println("▶ Juego reanudado");
         }
     }
@@ -2889,10 +2946,8 @@ public class GameApp extends Application {
      * Habilita/deshabilita la interacción con elementos del juego
      */
     private void disableGameInteractions(boolean disable) {
-
-
         if (disable) {
-            // Pausar todas las tareas de tala
+            // PAUSAR TODAS LAS TAREAS DE TALA
             for (WoodcuttingTask task : activeWoodcuttingTasks.values()) {
                 if (task.collectionTimeline != null) {
                     task.collectionTimeline.pause();
@@ -2901,6 +2956,17 @@ public class GameApp extends Application {
                     task.treeLifeTimeline.pause();
                 }
             }
+
+            // PAUSAR TODAS LAS TAREAS DE MINERÍA
+            for (MiningTask task : activeMiningTasks.values()) {
+                if (task.collectionTimeline != null) {
+                    task.collectionTimeline.pause();
+                }
+                if (task.mineLifeTimeline != null) {
+                    task.mineLifeTimeline.pause();
+                }
+            }
+
             // GUARDAR los handlers actuales ANTES de deshabilitarlos
             Scene scene = root.getScene();
             if (scene != null) {
@@ -2909,10 +2975,33 @@ public class GameApp extends Application {
                 savedMouseReleased = scene.getOnMouseReleased();
             }
 
-            // Deshabilitar TODOS los elementos del root excepto el overlay de pausa
+            // IMPORTANTE: Deshabilitar solo elementos específicos, NO TODOS
+            // NO deshabilitar las unidades seleccionadas
             for (int i = 0; i < root.getChildren().size(); i++) {
                 Node node = root.getChildren().get(i);
-                if (node != pauseOverlay && node != buildingGhost) {
+
+                // NO deshabilitar estos elementos:
+                // - Overlay de pausa (debe ser interactivo)
+                // - Fantasma de construcción
+                // - Unidades seleccionadas (para mantener la selección)
+                // - Rectángulo de selección
+
+                boolean shouldDisable = true;
+
+                if (node == pauseOverlay) {
+                    shouldDisable = false; // El overlay debe ser interactivo
+                } else if (node == buildingGhost) {
+                    shouldDisable = false;
+                } else if (node == selectionRect) {
+                    shouldDisable = false;
+                } else if (node instanceof ImageView imageView) {
+                    // Verificar si es una unidad seleccionada
+                    if (selectedUnitViews.contains(imageView)) {
+                        shouldDisable = false; // Mantener las unidades seleccionadas interactivas
+                    }
+                }
+
+                if (shouldDisable) {
                     node.setMouseTransparent(true);
                     node.setFocusTraversable(false);
                 }
@@ -2944,19 +3033,44 @@ public class GameApp extends Application {
                 pauseOverlay.toFront();
             }
         } else {
-            // ¡FALTA ESTO! Reanudar todas las tareas de tala al salir de pausa
+            // REANUDAR TODAS LAS TAREAS DE TALA AL SALIR DE PAUSA
             for (WoodcuttingTask task : activeWoodcuttingTasks.values()) {
-                if (task.collectionTimeline != null) {
-                    task.collectionTimeline.play();
-                }
-                if (task.treeLifeTimeline != null) {
-                    task.treeLifeTimeline.play();
+                if (task.isActive) {
+                    if (task.collectionTimeline != null &&
+                            task.collectionTimeline.getStatus() == Animation.Status.PAUSED) {
+                        task.collectionTimeline.play();
+                    }
+                    if (task.treeLifeTimeline != null &&
+                            task.treeLifeTimeline.getStatus() == Animation.Status.PAUSED) {
+                        task.treeLifeTimeline.play();
+                    }
                 }
             }
-            // Rehabilitar todos los elementos
+
+            // REANUDAR TODAS LAS TAREAS DE MINERÍA
+            for (MiningTask task : activeMiningTasks.values()) {
+                if (task.isActive) {
+                    if (task.collectionTimeline != null &&
+                            task.collectionTimeline.getStatus() == Animation.Status.PAUSED) {
+                        task.collectionTimeline.play();
+                    }
+                    if (task.mineLifeTimeline != null &&
+                            task.mineLifeTimeline.getStatus() == Animation.Status.PAUSED) {
+                        task.mineLifeTimeline.play();
+                    }
+                }
+            }
+
+            // IMPORTANTE: Rehabilitar todos los elementos EXCEPTO aquellos que deben permanecer deshabilitados
             for (Node node : root.getChildren()) {
-                node.setMouseTransparent(false);
-                node.setFocusTraversable(true);
+                // Solo rehabilitar elementos que fueron deshabilitados anteriormente
+                // Las unidades seleccionadas ya eran interactivas, no necesitan cambios
+                if (node != pauseOverlay && node != buildingGhost && node != selectionRect) {
+                    if (!selectedUnitViews.contains(node)) { // Solo si no es una unidad seleccionada
+                        node.setMouseTransparent(false);
+                        node.setFocusTraversable(true);
+                    }
+                }
             }
 
             // Rehabilitar eventos del mouse usando los handlers guardados
@@ -2965,15 +3079,20 @@ public class GameApp extends Application {
                 // Restaurar los handlers de selección de unidades
                 if (savedMousePressed != null) {
                     scene.setOnMousePressed(savedMousePressed);
+                } else {
+                    // Si no hay handlers guardados, reconfigurar desde cero
+                    setupUnitSelectionAndMovement(scene);
                 }
+
                 if (savedMouseDragged != null) {
                     scene.setOnMouseDragged(savedMouseDragged);
                 }
+
                 if (savedMouseReleased != null) {
                     scene.setOnMouseReleased(savedMouseReleased);
                 }
 
-                // Reconfigurar listeners de construcción si es necesario
+                // Reconfigurar listeners de construcción
                 setupBuildingListeners(scene);
 
                 // Asegurar que los listeners de unidad se restauraron
@@ -2983,6 +3102,11 @@ public class GameApp extends Application {
                 savedMousePressed = null;
                 savedMouseDragged = null;
                 savedMouseReleased = null;
+            }
+
+            // Re-aplicar los estilos de selección a las unidades que estaban seleccionadas
+            for (ImageView unit : selectedUnitViews) {
+                applySelectionStyle(unit, true);
             }
         }
     }
@@ -3015,7 +3139,12 @@ public class GameApp extends Application {
 
     @Override
     public void stop() throws Exception {
+        // Limpiar todas las tareas antes de cerrar
         cleanupAllTasks();
+
+        // Detener el ciclo de actualización de construcciones
+        stopConstructionUpdateLoop();
+
         super.stop();
     }
 
