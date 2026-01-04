@@ -6,6 +6,8 @@ import dominion.model.buildings.TownHall;
 import dominion.model.players.Player;
 import dominion.model.resources.ResourceType;
 import dominion.model.territories.Territory;
+import javafx.animation.SequentialTransition;
+import javafx.util.Duration;
 import javafx.animation.FadeTransition;
 import javafx.animation.ScaleTransition;
 import javafx.animation.TranslateTransition;
@@ -48,6 +50,7 @@ public class GameApp extends Application {
     private double selectStartX;
     private double selectStartY;
     private final List<ImageView> selectedUnitViews = new ArrayList<>();
+
 
 
     // ==================== CARGA DE IMÁGENES (classpath primero, file: como fallback) ====================
@@ -97,7 +100,7 @@ public class GameApp extends Application {
     private boolean isGamePaused = false;
     private Popup barracksPopup;    // Para el menú del cuartel
     private List<ImageView> createdKnights = new ArrayList<>(); // Para rastrear caballeros creados
-
+    private static final String MOVING_FLAG = "moving";
 
     @Override
     public void start(Stage stage) {
@@ -760,11 +763,13 @@ public class GameApp extends Application {
         try {
             Image townHallImage = loadImage("TownHall1.png");
             ImageView townHallView = new ImageView(townHallImage);
+            townHallView.setUserData("obstacle");
+            townHallView.toBack();
 
             double townHallSize = 170;
             townHallView.setFitWidth(townHallSize);
             townHallView.setFitHeight(townHallSize);
-            townHallView.setPreserveRatio(true);
+            townHallView.setPreserveRatio(false);// aki necesito poner en false para q detecte el tamanio real
 
             double townHallX = windowWidth * 0.3 - townHallSize / 2;
             double townHallY = windowHeight * 0.4 - townHallSize / 2;
@@ -807,6 +812,7 @@ public class GameApp extends Application {
             System.err.println("❌ Error al cargar TownHall: " + e.getMessage());
             addPlaceholderTownHall();
         }
+
     }
 
     private void showTownHallMenu(double centerX, double centerY) {
@@ -1080,6 +1086,15 @@ public class GameApp extends Application {
             showCollisionFeedback();
             return;
         }
+        // ❌ Bloquear construcción si hay unidades en el área/perímetro
+        if (isAreaOccupiedByUnits(posX, posY,
+                buildingWidth, buildingHeight,
+                8)) { // margen ajustable
+
+            showCollisionFeedback();
+            return;
+        }
+
 
         if (posX < 0 || posY < 0 ||
                 posX + buildingWidth > windowWidth ||
@@ -1110,12 +1125,16 @@ public class GameApp extends Application {
             Image buildingImage = loadImage(currentBuildingType + ".png");
 
             ImageView buildingView = new ImageView(buildingImage);
-            buildingView.setUserData("obstacle");
             buildingView.setFitWidth(buildingWidth);
             buildingView.setFitHeight(buildingHeight);
             buildingView.setPreserveRatio(true);
             buildingView.setX(posX);
             buildingView.setY(posY);
+            buildingView.setUserData("obstacle");
+            placedBuildings.add(buildingView);
+            buildingView.toBack();
+
+
 
             // Marcar como cuartel si es el caso
             if (currentBuildingType.equalsIgnoreCase("Cuartel")) {
@@ -1230,14 +1249,17 @@ public class GameApp extends Application {
     }
     private List<Node> getObstacleNodes() {
         List<Node> obs = new ArrayList<>();
-
-        // Revisa root
         for (Node n : root.getChildren()) {
-            if (n instanceof ImageView iv && isObstacle(iv)) obs.add(iv);
+            if (n instanceof ImageView iv) {
+                Object ud = iv.getUserData();
+                if (ud instanceof String s && s.equalsIgnoreCase("obstacle")) {
+                    obs.add(iv);
+                }
+            }
         }
-
         return obs;
     }
+
     private boolean isObstacle(ImageView iv) {
         // Recomendado: marca tus obstáculos con userData="obstacle" al crearlos
         Object ud = iv.getUserData();
@@ -1260,39 +1282,153 @@ public class GameApp extends Application {
 
         List<Node> obstacles = getObstacleNodes();
 
-        Bounds unitBounds = new BoundingBox(tx - unitW / 2, ty - unitH / 2, unitW, unitH);
+        double padding = 8; // separacion extra para buildings grandes
 
-        for (int tries = 0; tries < 40; tries++) {
-            Bounds hitB = null;
+        // ✅ tx,ty tratados como TOP-LEFT (igual que ImageView.setX/setY)
+        Bounds unitBounds = new BoundingBox(tx, ty, unitW, unitH);
+
+        for (int tries = 0; tries < 60; tries++) {
+
+            Bounds hit = null;
 
             for (Node ob : obstacles) {
-                Bounds obB = ob.getBoundsInParent(); // ✅ parent coords
+                Bounds obB = ob.getBoundsInParent();
                 if (obB.intersects(unitBounds)) {
-                    hitB = obB;
+                    hit = obB;
                     break;
                 }
             }
 
-            if (hitB == null) break;
+            if (hit == null) break;
 
-            double left  = unitBounds.getMaxX() - hitB.getMinX();
-            double right = hitB.getMaxX() - unitBounds.getMinX();
-            double up    = unitBounds.getMaxY() - hitB.getMinY();
-            double down  = hitB.getMaxY() - unitBounds.getMinY();
+            // solapes por cada lado
+            double pushLeft  = unitBounds.getMaxX() - hit.getMinX();   // empujar hacia la izquierda
+            double pushRight = hit.getMaxX() - unitBounds.getMinX();   // empujar hacia la derecha
+            double pushUp    = unitBounds.getMaxY() - hit.getMinY();   // empujar hacia arriba
+            double pushDown  = hit.getMaxY() - unitBounds.getMinY();   // empujar hacia abajo
 
-            double min = Math.min(Math.min(left, right), Math.min(up, down));
-            double pad = 2;
+            double min = Math.min(Math.min(pushLeft, pushRight), Math.min(pushUp, pushDown));
 
-            if (min == left)  tx -= (left + pad);
-            else if (min == right) tx += (right + pad);
-            else if (min == up)    ty -= (up + pad);
-            else                   ty += (down + pad);
+            if (min == pushLeft) {
+                tx -= (pushLeft + padding);
+            } else if (min == pushRight) {
+                tx += (pushRight + padding);
+            } else if (min == pushUp) {
+                ty -= (pushUp + padding);
+            } else {
+                ty += (pushDown + padding);
+            }
 
-            unitBounds = new BoundingBox(tx - unitW / 2, ty - unitH / 2, unitW, unitH);
+            unitBounds = new BoundingBox(tx, ty, unitW, unitH);
         }
 
         return new double[]{tx, ty};
     }
+
+    // aki empiezan los metodos para evitar que una ruta de un punto A a B
+    //se cruce con un objeto
+
+    private Bounds lineIntersectsObstacle(double x1, double y1,
+                                          double x2, double y2) {
+
+        for (Node ob : getObstacleNodes()) {
+            Bounds b = ob.getBoundsInParent();
+
+            // chequeo simple: ¿la línea cruza el rectángulo?
+            if (lineIntersectsRect(x1, y1, x2, y2, b)) {
+                return b;
+            }
+        }
+        return null;
+    }
+
+    private boolean lineIntersectsRect(double x1, double y1,
+                                       double x2, double y2,
+                                       Bounds r) {
+
+        return lineIntersectsLine(x1, y1, x2, y2, r.getMinX(), r.getMinY(), r.getMaxX(), r.getMinY()) ||
+                lineIntersectsLine(x1, y1, x2, y2, r.getMaxX(), r.getMinY(), r.getMaxX(), r.getMaxY()) ||
+                lineIntersectsLine(x1, y1, x2, y2, r.getMaxX(), r.getMaxY(), r.getMinX(), r.getMaxY()) ||
+                lineIntersectsLine(x1, y1, x2, y2, r.getMinX(), r.getMaxY(), r.getMinX(), r.getMinY());
+    }
+
+    private boolean lineIntersectsLine(double x1, double y1,
+                                       double x2, double y2,
+                                       double x3, double y3,
+                                       double x4, double y4) {
+
+        double den = (x1 - x2)*(y3 - y4) - (y1 - y2)*(x3 - x4);
+        if (den == 0) return false;
+
+        double t = ((x1 - x3)*(y3 - y4) - (y1 - y3)*(x3 - x4)) / den;
+        double u = -((x1 - x2)*(y1 - y3) - (y1 - y2)*(x1 - x3)) / den;
+
+        return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+    }
+
+    private double[] computeBypassWaypoint(double sx, double sy,
+                                           double tx, double ty,
+                                           Bounds ob) {
+
+        double pad = 10; // separación del obstáculo
+
+        // Cuatro posibles puntos alrededor del obstáculo
+        double[][] candidates = {
+                {ob.getMinX() - pad, sy}, // izquierda
+                {ob.getMaxX() + pad, sy}, // derecha
+                {sx, ob.getMinY() - pad}, // arriba
+                {sx, ob.getMaxY() + pad}  // abajo
+        };
+
+        double bestDist = Double.MAX_VALUE;
+        double[] best = null;
+
+        for (double[] p : candidates) {
+            double dx = tx - p[0];
+            double dy = ty - p[1];
+            double d = dx*dx + dy*dy;
+            if (d < bestDist) {
+                bestDist = d;
+                best = p;
+            }
+        }
+
+        return best;
+    }
+
+
+
+
+
+    private boolean isAreaOccupiedByUnits(double x, double y, double width, double height,
+                                          double margin) {
+
+        Rectangle buildingArea = new Rectangle(
+                x - margin,
+                y - margin,
+                width + margin * 2,
+                height + margin * 2
+        );
+
+        for (Node node : root.getChildren()) {
+            if (node instanceof ImageView iv && isWorkerUnit(iv)) {
+
+                Rectangle unitBounds = new Rectangle(
+                        iv.getX(),
+                        iv.getY(),
+                        iv.getBoundsInLocal().getWidth(),
+                        iv.getBoundsInLocal().getHeight()
+                );
+
+                if (buildingArea.intersects(unitBounds.getBoundsInLocal())) {
+                    return true; // ❌ hay una unidad en el área
+                }
+            }
+        }
+        return false; // ✅ área libre
+    }
+
+
     private void handleUnitClickOrMove(double x, double y, boolean shiftDown) {
         ImageView clicked = getUnitViewAt(x, y);
 
@@ -1469,13 +1605,74 @@ public class GameApp extends Application {
 
 
     private void animateMove(ImageView unit, double targetX, double targetY) {
+
+        // ❌ no permitir dobles movimientos
+        if (MOVING_FLAG.equals(unit.getUserData())) return;
+
+        unit.setUserData(MOVING_FLAG);
+        unit.toFront();
+
+        double startX = unit.getX();
+        double startY = unit.getY();
+
+        Bounds obstacle = lineIntersectsObstacle(startX, startY, targetX, targetY);
+
+        SequentialTransition sequence;
+
+        if (obstacle == null) {
+            sequence = new SequentialTransition(
+                    moveTo(unit, targetX, targetY)
+            );
+        } else {
+
+            double[] waypoint = computeBypassWaypoint(startX, startY, targetX, targetY, obstacle);
+            sequence = new SequentialTransition(
+                    moveTo(unit, waypoint[0], waypoint[1]),
+                    moveTo(unit, targetX, targetY)
+            );
+        }
+
+        sequence.setOnFinished(e -> unit.setUserData(null));
+        sequence.play();
+    }
+
+
+    private TranslateTransition moveTo(ImageView unit, double tx, double ty) {
+
+        double dx = tx - unit.getX();
+        double dy = ty - unit.getY();
+        double distance = Math.hypot(dx, dy);
+        double speed = 160;
+        double duration = Math.max(0.15, distance / speed);
+
+        TranslateTransition transition = new TranslateTransition(Duration.seconds(duration), unit);
+        transition.setToX(dx);
+        transition.setToY(dy);
+
+        transition.setOnFinished(e -> {
+            unit.setX(tx);
+            unit.setY(ty);
+            unit.setTranslateX(0);
+            unit.setTranslateY(0);
+        });
+
+        return transition;
+    }
+
+
+
+    private void animateSegment(ImageView unit, double x, double y) {
+        createMoveTransition(unit, x, y).play();
+    }
+
+
+    private TranslateTransition createMoveTransition(ImageView unit, double tx, double ty) {
+
         double startX = unit.getX() + unit.getTranslateX();
         double startY = unit.getY() + unit.getTranslateY();
-
-        double dx = targetX - startX;
-        double dy = targetY - startY;
+        double dx = tx - startX;
+        double dy = ty - startY;
         double dist = Math.sqrt(dx * dx + dy * dy);
-
         double speed = 160.0;
         double seconds = Math.max(0.15, dist / speed);
 
@@ -1484,13 +1681,13 @@ public class GameApp extends Application {
         tt.setByY(dy);
 
         tt.setOnFinished(ev -> {
-            unit.setX(targetX);
-            unit.setY(targetY);
+            unit.setX(tx);
+            unit.setY(ty);
             unit.setTranslateX(0);
             unit.setTranslateY(0);
         });
 
-        tt.play();
+        return tt;
     }
     private void pushApartTargets(List<double[]> targets) {
         double minDist = 30; // ajusta 24-40
@@ -1565,6 +1762,7 @@ public class GameApp extends Application {
         if (selectedUnitViews.contains(unit)) return;
 
         selectedUnitViews.add(unit);
+        unit.toFront();
         applySelectionStyle(unit, true);
     }
 
@@ -2327,8 +2525,10 @@ public class GameApp extends Application {
             unitView.setFitWidth(size);
             unitView.setFitHeight(size);
             unitView.setPreserveRatio(true);
-            unitView.setX(x);
-            unitView.setY(y);
+            if (!MOVING_FLAG.equals(unitView.getUserData())) {
+                unitView.setX(x);
+                unitView.setY(y);
+            }
 
             unitView.setId(unitType + "_" + System.currentTimeMillis());
             unitView.setUserData(unitType);
@@ -3391,8 +3591,10 @@ public class GameApp extends Application {
             unitView.setFitWidth(size);
             unitView.setFitHeight(size);
             unitView.setPreserveRatio(true);
-            unitView.setX(x);
-            unitView.setY(y);
+            if (!MOVING_FLAG.equals(unitView.getUserData())) {
+                unitView.setX(x);
+                unitView.setY(y);
+            }
 
             unitView.setId(unitType + "_" + System.currentTimeMillis());
             unitView.setUserData(unitType);
