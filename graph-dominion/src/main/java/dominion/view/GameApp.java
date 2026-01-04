@@ -159,7 +159,7 @@ public class GameApp extends Application {
         addMinesToMap();
 
         // 9. Crear unidades
-        createUnitNextToTownHall("leñador", "minero.png", 50);
+        createUnitNextToTownHall("minero", "minero.png", 50);
         createUnitNextToTownHall("minero", "minero.png", 50);
         createUnitNextToTownHall("leñador", "leñador.png", 50);
 
