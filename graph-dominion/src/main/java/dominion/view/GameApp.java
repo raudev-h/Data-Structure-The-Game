@@ -391,20 +391,47 @@ public class GameApp extends Application {
         int count = woodcutters.size();
         double treeCenterX = treeX + treeWidth / 2;
         double treeCenterY = treeY + treeHeight / 2;
-        double radius = Math.max(treeWidth, treeHeight) / 2 + 60; // Distancia alrededor del árbol
-        double unitSize = 50;
+        double baseRadius = Math.max(treeWidth, treeHeight) / 2 + 60;
+
+        // Contar leñadores existentes en ESTE árbol específico
+        int existingWoodcuttersOnThisTree = 0;
+        for (WoodcuttingTask task : activeWoodcuttingTasks.values()) {
+            if (task.tree != null && task.tree.getX() == treeX && task.tree.getY() == treeY) {
+                existingWoodcuttersOnThisTree++;
+            }
+        }
+
+        // Verificar si ya alcanzamos el límite máximo (2 leñadores por árbol)
+        if (existingWoodcuttersOnThisTree + count > 2) {
+            System.out.println("⚠️ Límite de leñadores alcanzado para este árbol");
+            // Solo mover hasta completar el límite
+            count = Math.max(0, 2 - existingWoodcuttersOnThisTree);
+            if (count == 0) {
+                System.out.println("❌ No se pueden enviar más leñadores a este árbol");
+                return;
+            }
+        }
+
+        // Ajustar radio según cuántos leñadores ya hay
+        double radius = baseRadius + (existingWoodcuttersOnThisTree * 20);
 
         for (int i = 0; i < count; i++) {
-            double angle = 2 * Math.PI * i / count;
-            double targetX = treeCenterX + Math.cos(angle) * radius - unitSize / 2;
-            double targetY = treeCenterY + Math.sin(angle) * radius - unitSize / 2;
+            // Calcular ángulo inicial basado en leñadores existentes
+            double startAngle = (existingWoodcuttersOnThisTree * 90) % 360; // Desplazar 90° por cada leñador existente
+            double angle = Math.toRadians(startAngle + (i * (360.0 / count)));
+
+            double targetX = treeCenterX + Math.cos(angle) * radius - 50 / 2;
+            double targetY = treeCenterY + Math.sin(angle) * radius - 50 / 2;
 
             // Asegurar que está dentro de los límites
-            targetX = Math.max(0, Math.min(targetX, windowWidth - unitSize));
-            targetY = Math.max(0, Math.min(targetY, windowHeight - unitSize));
+            targetX = Math.max(0, Math.min(targetX, windowWidth - 50));
+            targetY = Math.max(0, Math.min(targetY, windowHeight - 50));
 
             animateMove(woodcutters.get(i), targetX, targetY);
         }
+
+        System.out.println("🪓 Moviendo " + count + " leñadores al árbol (ya hay " +
+                existingWoodcuttersOnThisTree + " trabajando)");
     }
     /**
      * Encuentra una mina en las coordenadas dadas (x, y)
@@ -675,17 +702,30 @@ public class GameApp extends Application {
         int count = miners.size();
         double mineCenterX = mineX + mineWidth / 2;
         double mineCenterY = mineY + mineHeight / 2;
-        double radius = Math.max(mineWidth, mineHeight) / 2 + 60; // Distancia alrededor de la mina
-        double unitSize = 50;
+        double baseRadius = Math.max(mineWidth, mineHeight) / 2 + 60;
+
+        // Verificar si ya hay mineros en esta mina
+        int existingMiners = 0;
+        for (MiningTask task : activeMiningTasks.values()) {
+            if (task.mine != null && task.mine.getX() == mineX && task.mine.getY() == mineY) {
+                existingMiners++;
+            }
+        }
+
+        // Ajustar radio según cuántos mineros ya hay
+        double radius = baseRadius + (existingMiners * 20);
 
         for (int i = 0; i < count; i++) {
-            double angle = 2 * Math.PI * i / count;
-            double targetX = mineCenterX + Math.cos(angle) * radius - unitSize / 2;
-            double targetY = mineCenterY + Math.sin(angle) * radius - unitSize / 2;
+            // Empezar desde un ángulo diferente si ya hay mineros
+            double startAngle = (existingMiners * 90) % 360; // Desplazar 90° por cada minero existente
+            double angle = Math.toRadians(startAngle + (i * (360.0 / count)));
+
+            double targetX = mineCenterX + Math.cos(angle) * radius - 50 / 2;
+            double targetY = mineCenterY + Math.sin(angle) * radius - 50 / 2;
 
             // Asegurar que está dentro de los límites
-            targetX = Math.max(0, Math.min(targetX, windowWidth - unitSize));
-            targetY = Math.max(0, Math.min(targetY, windowHeight - unitSize));
+            targetX = Math.max(0, Math.min(targetX, windowWidth - 50));
+            targetY = Math.max(0, Math.min(targetY, windowHeight - 50));
 
             animateMove(miners.get(i), targetX, targetY);
         }
@@ -695,6 +735,12 @@ public class GameApp extends Application {
         // Verificar si ya hay una tarea activa para este minero
         if (activeMiningTasks.containsKey(miner)) {
             MiningTask existingTask = activeMiningTasks.get(miner);
+            // Si ya está minando ESTA MISMA mina, no hacer nada
+            if (existingTask.mine == mine && existingTask.isActive) {
+                System.out.println("⚠️ Este minero ya está minando esta mina");
+                return;
+            }
+            // Si está minando otra mina, detenerla
             existingTask.isActive = false;
             if (existingTask.collectionTimeline != null) {
                 existingTask.collectionTimeline.stop();
@@ -704,35 +750,55 @@ public class GameApp extends Application {
             }
         }
 
-        // Crear nueva tarea con el estado actual de la mina
+        // Verificar si la mina ya está agotada
+        if (isMineDepleted(mine)) {
+            System.out.println("⚠️ Esta mina ya está agotada");
+            showResourceDepletedAlert("mina");
+            return;
+        }
+
+        // Verificar si hay demasiados mineros en la misma mina (limitar a 2 por ejemplo)
+        Integer activeMiners = (Integer) mine.getProperties().get("activeMiners");
+        if (activeMiners != null && activeMiners >= 2) { // Limitar a 2 mineros por mina
+            System.out.println("⚠️ Esta mina ya tiene " + activeMiners + " mineros trabajando");
+            showTooManyWorkersAlert("mina");
+            return;
+        }
+
+        // Crear nueva tarea
         MiningTask task = new MiningTask(miner, mine);
 
-        // Timeline para recolectar oro - solo el número de ciclos restantes
-        task.collectionTimeline = new Timeline(
-                new KeyFrame(Duration.seconds(10), e -> collectGoldFromMine(task))
-        );
-        task.collectionTimeline.setCycleCount(task.mineRemainingCycles); // Solo ciclos restantes
+        // Timeline para recolectar oro - compartido entre todos los mineros
+        // Si hay más mineros, la recolección es más rápida
+        double collectionInterval = 10.0;
+        Integer minersCount = (Integer) mine.getProperties().get("activeMiners");
+        if (minersCount != null && minersCount > 1) {
+            // Con 2 mineros, cada ciclo toma 5 segundos (50% más rápido)
+            collectionInterval = 10.0 / minersCount;
+            System.out.println("⚡ Eficiencia aumentada: " + minersCount +
+                    " mineros = 1 ciclo cada " + collectionInterval + "s");
+        }
 
-        // Timeline para agotar la mina basado en ciclos restantes
-        double remainingLife = task.mineRemainingCycles * 10; // 10 segundos por ciclo
+        task.collectionTimeline = new Timeline(
+                new KeyFrame(Duration.seconds(collectionInterval), e -> collectGoldFromMine(task))
+        );
+        task.collectionTimeline.setCycleCount(task.mineRemainingCycles);
+
+        // Timeline para agotar la mina - velocidad depende de mineros activos
+        double remainingLife = task.mineRemainingCycles * collectionInterval;
         task.mineLifeTimeline = new Timeline(
                 new KeyFrame(Duration.seconds(remainingLife), e -> depleteMine(task))
         );
         task.mineLifeTimeline.setCycleCount(1);
 
-        // Configurar lo que pasa cuando termina la recolección
+        // Configurar lo que pasa cuando termina
         task.collectionTimeline.setOnFinished(e -> {
-            System.out.println("✅ Minero completó la explotación de la mina " + mine.getId());
+            System.out.println("✅ Minero completó su turno en la mina " + mine.getId());
             task.isActive = false;
-
-            // Guardar estado final (0 ciclos)
-            mine.getProperties().put("remainingCycles", 0);
         });
 
-        // Configurar lo que pasa cuando se agota la mina
         task.mineLifeTimeline.setOnFinished(e -> {
             System.out.println("⛏ Tiempo de vida de la mina " + mine.getId() + " terminado");
-            // El estado ya está actualizado en depleteMine
         });
 
         // Iniciar las timelines
@@ -743,61 +809,156 @@ public class GameApp extends Application {
         activeMiningTasks.put(miner, task);
 
         System.out.println("⛏ Minero comenzó a extraer oro de la mina " + mine.getId() +
-                " - " + task.mineRemainingCycles + " ciclos restantes de 10 segundos cada uno");
+                " - " + task.mineRemainingCycles + " ciclos restantes");
     }
 
     private void collectGoldFromMine(MiningTask task) {
         if (!task.isActive) return;
 
-        // Verificar que la mina aún exista
+        // Verificar que la mina exista
         if (!root.getChildren().contains(task.mine)) {
             task.isActive = false;
             return;
         }
 
-        // Verificar si la mina ya está agotada
+        // VERIFICAR SI YA SE PROCESÓ ESTE CICLO
+        String cycleKey = "lastMineCycle_" + task.mine.getId();
+        Long lastCycleTime = (Long) task.mine.getProperties().get(cycleKey);
+        long currentTime = System.currentTimeMillis();
+
+        // Si ya se procesó un ciclo en los últimos 9 segundos, solo dar oro
+        if (lastCycleTime != null && (currentTime - lastCycleTime) < 9000) {
+            // SOLO DAR ORO A ESTE MINERO, NO PROCESAR CICLO
+            giveGoldToMinerOnly(task);
+            return;
+        }
+
+        // MARCAR QUE ESTE MINERO PROCESA EL CICLO
+        task.mine.getProperties().put(cycleKey, currentTime);
+
+        // PROCESAR CICLO COMPLETO (solo una vez)
+        processCompleteMineCycle(task);
+    }
+
+    private void giveGoldToMinerOnly(MiningTask task) {
+        // Solo dar oro a este minero, sin procesar ciclo
+        int mineros = countActiveMinersOnMine(task.mine);
+        if (mineros == 0) mineros = 1;
+
+        int oroPorMiner = 50 / mineros;
+
+        if (territory1 != null && territory1.getTownHall() != null) {
+            territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, oroPorMiner);
+            task.goldCollected += oroPorMiner;
+
+            Platform.runLater(() -> updateResourceDisplay());
+            showGoldCollectionEffect(task.miner, task.mine, oroPorMiner);
+
+            System.out.println("⛏ Minero secundario recibe: +" + oroPorMiner + " oro");
+        }
+    }
+
+    private void processCompleteMineCycle(MiningTask task) {
+        System.out.println("\n⛏⛏⛏ CICLO MINERO COMPLETO ⛏⛏⛏");
+
+        // Obtener estado actual
         Integer remainingCycles = (Integer) task.mine.getProperties().get("remainingCycles");
-        if (remainingCycles != null && remainingCycles <= 0) {
-            System.out.println("⚠️ Mina ya está agotada");
+        if (remainingCycles == null) {
+            remainingCycles = 10;
+            task.mine.getProperties().put("remainingCycles", 10);
+        }
+
+        if (remainingCycles <= 0) {
+            System.out.println("🛑 Mina ya agotada");
             task.isActive = false;
             return;
         }
 
-        // Agregar oro al TownHall
+        // Contar mineros
+        int mineros = countActiveMinersOnMine(task.mine);
+        if (mineros == 0) mineros = 1;
+
+        // Calcular distribución
+        int oroTotalCiclo = 50; // ¡SIEMPRE 50 ORO POR CICLO!
+        int oroPorMiner = oroTotalCiclo / mineros;
+        int resto = oroTotalCiclo % mineros;
+
+        System.out.println("Mina: " + task.mine.getId());
+        System.out.println("Mineros activos: " + mineros);
+        System.out.println("Ciclo actual: " + (11 - remainingCycles) + "/10");
+        System.out.println("Oro total por ciclo: " + oroTotalCiclo);
+        System.out.println("Oro por minero: " + oroPorMiner);
+
+        // PROCESAR RECOLECCIÓN
         if (territory1 != null && territory1.getTownHall() != null) {
-            territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, 50);
-            task.goldCollected += 50;
+            // 1. Dar oro al TownHall (50 total por ciclo)
+            territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, oroTotalCiclo);
 
-            // Actualizar estado del recurso
-            Integer totalCollected = (Integer) task.mine.getProperties().get("totalCollected");
-            if (totalCollected == null) totalCollected = 0;
-            task.mine.getProperties().put("totalCollected", totalCollected + 50);
-
-            // Actualizar ciclos restantes
-            int newRemainingCycles = task.mineRemainingCycles - 1;
-            task.mineRemainingCycles = newRemainingCycles;
-            task.mine.getProperties().put("remainingCycles", newRemainingCycles);
-
-            // Actualizar display
-            Platform.runLater(() -> updateResourceDisplay());
-
-            // Mostrar efecto visual
-            showGoldCollectionEffect(task.miner, task.mine);
-
-            System.out.println("💰 +50 Oro recolectado de la mina " + task.mine.getId() +
-                    " (Ciclo: " + (10 - newRemainingCycles) + "/10, Restantes: " + newRemainingCycles + ")");
-
-            // Si ya se recolectó todo el oro, detener
-            if (newRemainingCycles <= 0) {
-                task.isActive = false;
-                System.out.println("✅ Mina completamente agotada");
+            // 2. Dar el resto extra si hay
+            if (resto > 0) {
+                territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, resto);
             }
+
+            // 3. Actualizar estado de la mina
+            int nuevosCiclos = remainingCycles - 1;
+            task.mineRemainingCycles = nuevosCiclos;
+            task.mine.getProperties().put("remainingCycles", nuevosCiclos);
+
+            // 4. Actualizar oro acumulado (¡SOLO +50!)
+            Integer totalAcumulado = (Integer) task.mine.getProperties().get("totalCollected");
+            if (totalAcumulado == null) totalAcumulado = 0;
+            int nuevoTotal = totalAcumulado + oroTotalCiclo; // ¡+50, no +25×2!
+            task.mine.getProperties().put("totalCollected", nuevoTotal);
+
+            // 5. Actualizar contador personal
+            task.goldCollected += oroPorMiner;
+
+            // 6. LOG CORRECTO
+            System.out.println("Oro añadido al TownHall: +" + oroTotalCiclo);
+            System.out.println("Ciclos restantes: " + nuevosCiclos);
+            System.out.println("Oro acumulado en mina: " + nuevoTotal + "/500");
+
+            // 7. Mostrar UI y verificar
+            Platform.runLater(() -> {
+                updateResourceDisplay();
+                int oroActual = territory1.getTownHall().getStoredResources().getAmount(ResourceType.GOLD);
+                System.out.println("💰 Oro actual en TownHall: " + oroActual);
+            });
+
+            // 8. Efecto visual
+            showGoldCollectionEffect(task.miner, task.mine, oroPorMiner);
+
+            // 9. Verificar fin
+            if (nuevosCiclos <= 0) {
+                task.isActive = false;
+                System.out.println("✅ MINA COMPLETAMENTE AGOTADA");
+
+                // Verificar total
+                if (nuevoTotal < 500) {
+                    int faltante = 500 - nuevoTotal;
+                    territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, faltante);
+                    System.out.println("➕ Ajuste final mina: +" + faltante + " oro");
+                    Platform.runLater(() -> updateResourceDisplay());
+                }
+            }
+
+            System.out.println("=================================\n");
         }
     }
 
-    private void showGoldCollectionEffect(ImageView miner, ImageView mine) {
-        // Crear texto flotante
-        Label goldLabel = new Label("+50 Oro");
+    private int countActiveMinersOnMine(ImageView mine) {
+        int count = 0;
+        for (MiningTask t : activeMiningTasks.values()) {
+            if (t.mine != null && t.mine == mine && t.isActive) {
+                count++;
+            }
+        }
+        return Math.max(1, count);
+    }
+
+    private void showGoldCollectionEffect(ImageView miner, ImageView mine, int amount) {
+        // Crear texto flotante con la cantidad
+        Label goldLabel = new Label("+" + amount + " Oro");
         goldLabel.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: #FFD700;");
 
         // Posicionar entre el minero y la mina
@@ -826,16 +987,19 @@ public class GameApp extends Application {
         parallel.setOnFinished(e -> root.getChildren().remove(goldLabel));
         parallel.play();
 
-        // Efecto de partículas de oro
-        createGoldParticles(mine);
+        // Efecto de partículas de oro con la cantidad
+        createGoldParticles(mine, amount);
     }
 
-    private void createGoldParticles(ImageView mine) {
+    private void createGoldParticles(ImageView mine, int amount) {
         double mineX = mine.getX() + mine.getFitWidth() / 2;
         double mineY = mine.getY() + mine.getFitHeight() / 2;
 
-        for (int i = 0; i < 5; i++) {
-            Circle particle = new Circle(2, Color.rgb(255, 215, 0, 0.8));
+        // Crear más partículas según la cantidad recolectada
+        int particleCount = 3 + (amount / 25); // Mínimo 3, más si hay mayor cantidad
+
+        for (int i = 0; i < particleCount; i++) {
+            Circle particle = new Circle(2 + (amount / 50.0), Color.rgb(255, 215, 0, 0.8)); // Tamaño según cantidad
             particle.setCenterX(mineX);
             particle.setCenterY(mineY);
 
@@ -935,21 +1099,48 @@ public class GameApp extends Application {
         Timeline mineLifeTimeline;
         int goldCollected = 0;
         boolean isActive = true;
-        int mineRemainingCycles; // Ciclos restantes de la mina
+        int mineRemainingCycles;
+        String taskId;
 
         MiningTask(ImageView miner, ImageView mine) {
+            // VERIFICAR QUE LA MINA NO SEA NULL
+            if (mine == null) {
+                throw new IllegalArgumentException("La mina no puede ser null");
+            }
+
             this.miner = miner;
             this.mine = mine;
+            this.taskId = "mining_" + System.currentTimeMillis() + "_" + miner.hashCode();
 
-            // Obtener ciclos restantes del recurso o inicializar si es primera vez
-            Integer remaining = (Integer) mine.getProperties().get("remainingCycles");
-            if (remaining == null) {
-                // Primera vez - empezar con 10 ciclos completos
+            try {
+                // Obtener ciclos restantes del recurso COMPARTIDO
+                Integer remaining = (Integer) mine.getProperties().get("remainingCycles");
+                if (remaining == null) {
+                    // Primera vez - empezar con 10 ciclos completos
+                    this.mineRemainingCycles = 10;
+                    mine.getProperties().put("remainingCycles", 10);
+                    mine.getProperties().put("totalCollected", 0);
+                    mine.getProperties().put("activeMiners", 1);
+                    mine.getProperties().put("lastTaskTime", System.currentTimeMillis());
+                } else {
+                    this.mineRemainingCycles = remaining;
+                    // Incrementar contador de mineros activos
+                    Integer activeMiners = (Integer) mine.getProperties().get("activeMiners");
+                    if (activeMiners == null) {
+                        activeMiners = 1;
+                    } else {
+                        activeMiners++;
+                    }
+                    mine.getProperties().put("activeMiners", activeMiners);
+                }
+
+                System.out.println("✅ MiningTask creada para mina: " + mine.getId() +
+                        " - Ciclos: " + this.mineRemainingCycles);
+
+            } catch (Exception e) {
+                System.err.println("❌ Error en constructor MiningTask: " + e.getMessage());
+                // Valores por defecto
                 this.mineRemainingCycles = 10;
-                mine.getProperties().put("remainingCycles", 10);
-                mine.getProperties().put("totalCollected", 0);
-            } else {
-                this.mineRemainingCycles = remaining;
             }
         }
     }
@@ -962,21 +1153,40 @@ public class GameApp extends Application {
         int woodCollected = 0;
         boolean isActive = true;
         int treeRemainingCycles; // Ciclos restantes del árbol
+        String taskId; // Identificador único
 
         WoodcuttingTask(ImageView woodcutter, ImageView tree) {
             this.woodcutter = woodcutter;
             this.tree = tree;
+            this.taskId = "woodcutting_" + System.currentTimeMillis() + "_" + woodcutter.hashCode();
 
-            // Obtener ciclos restantes del recurso o inicializar si es primera vez
+            // Obtener ciclos restantes del recurso COMPARTIDO
             Integer remaining = (Integer) tree.getProperties().get("remainingCycles");
             if (remaining == null) {
                 // Primera vez - empezar con 5 ciclos completos
                 this.treeRemainingCycles = 5;
                 tree.getProperties().put("remainingCycles", 5);
                 tree.getProperties().put("totalCollected", 0);
+                tree.getProperties().put("activeWoodcutters", 1);
             } else {
                 this.treeRemainingCycles = remaining;
+                // Incrementar contador de leñadores activos
+                Integer activeWoodcutters = (Integer) tree.getProperties().get("activeWoodcutters");
+                if (activeWoodcutters == null) {
+                    activeWoodcutters = 1;
+                } else {
+                    activeWoodcutters++;
+                    // Limitar a 2 leñadores por árbol
+                    if (activeWoodcutters > 2) {
+                        activeWoodcutters = 2;
+                    }
+                }
+                tree.getProperties().put("activeWoodcutters", activeWoodcutters);
             }
+
+            System.out.println("🌳 Árbol " + tree.getId() +
+                    " - Ciclos restantes: " + this.treeRemainingCycles +
+                    " - Leñadores activos: " + tree.getProperties().get("activeWoodcutters"));
         }
     }
 
@@ -984,6 +1194,14 @@ public class GameApp extends Application {
         // Verificar si ya hay una tarea activa para este leñador
         if (activeWoodcuttingTasks.containsKey(woodcutter)) {
             WoodcuttingTask existingTask = activeWoodcuttingTasks.get(woodcutter);
+
+            // Si ya está talando ESTE MISMO árbol, no hacer nada
+            if (existingTask.tree == tree && existingTask.isActive) {
+                System.out.println("⚠️ Este leñador ya está talando este árbol");
+                return;
+            }
+
+            // Si está talando otro árbol, detener esa tarea primero
             existingTask.isActive = false;
             if (existingTask.collectionTimeline != null) {
                 existingTask.collectionTimeline.stop();
@@ -991,6 +1209,19 @@ public class GameApp extends Application {
             if (existingTask.treeLifeTimeline != null) {
                 existingTask.treeLifeTimeline.stop();
             }
+
+            // Decrementar contador del árbol anterior
+            if (existingTask.tree != null && existingTask.tree != tree) {
+                Integer previousActive = (Integer) existingTask.tree.getProperties().get("activeWoodcutters");
+                if (previousActive != null && previousActive > 0) {
+                    previousActive--;
+                    existingTask.tree.getProperties().put("activeWoodcutters", previousActive);
+                    System.out.println("🔄 Leñador cambiando de árbol. Leñadores en árbol anterior: " + previousActive);
+                }
+            }
+
+            // Remover la tarea anterior
+            activeWoodcuttingTasks.remove(woodcutter);
         }
 
         // Verificar si el árbol ya está agotado
@@ -1000,21 +1231,41 @@ public class GameApp extends Application {
             return;
         }
 
+        // Verificar límite de leñadores en ESTE árbol
+        Integer activeWoodcutters = (Integer) tree.getProperties().get("activeWoodcutters");
+        if (activeWoodcutters == null) {
+            activeWoodcutters = 0;
+        }
+
+        if (activeWoodcutters >= 2) {
+            return;
+        }
+
         // Crear nueva tarea con el estado actual del árbol
         WoodcuttingTask task = new WoodcuttingTask(woodcutter, tree);
 
+        // Calcular intervalo de recolección basado en número de leñadores
+        double collectionInterval = 10.0;
+        Integer currentWoodcutters = (Integer) tree.getProperties().get("activeWoodcutters");
+        if (currentWoodcutters != null && currentWoodcutters > 1) {
+            // Con 2 leñadores, cada ciclo es más rápido
+            collectionInterval = 10.0 / currentWoodcutters;
+            System.out.println("⚡ Eficiencia aumentada: " + currentWoodcutters +
+                    " leñadores = 1 ciclo cada " + collectionInterval + "s");
+        }
+
         // Timeline para recolectar madera - solo el número de ciclos restantes
         task.collectionTimeline = new Timeline(
-                new KeyFrame(Duration.seconds(10), e -> collectWoodFromTree(task))
+                new KeyFrame(Duration.seconds(collectionInterval), e -> collectWoodFromTree(task))
         );
-        task.collectionTimeline.setCycleCount(task.treeRemainingCycles); // Solo ciclos restantes
+        task.collectionTimeline.setCycleCount(task.treeRemainingCycles);
 
         // Timeline para eliminar el árbol basado en ciclos restantes
-        double remainingLife = task.treeRemainingCycles * 10; // 10 segundos por ciclo
+        double remainingLife = task.treeRemainingCycles * collectionInterval;
         task.treeLifeTimeline = new Timeline(
                 new KeyFrame(Duration.seconds(remainingLife), e -> removeTree(task))
         );
-        task.treeLifeTimeline.setCycleCount(1); // Solo una vez
+        task.treeLifeTimeline.setCycleCount(1);
 
         // Configurar lo que pasa cuando termina la recolección
         task.collectionTimeline.setOnFinished(e -> {
@@ -1038,7 +1289,8 @@ public class GameApp extends Application {
         activeWoodcuttingTasks.put(woodcutter, task);
 
         System.out.println("🪓 Leñador comenzó a talar árbol " + tree.getId() +
-                " - " + task.treeRemainingCycles + " ciclos restantes de 10 segundos cada uno");
+                " - " + task.treeRemainingCycles + " ciclos restantes de " + collectionInterval + "s cada uno" +
+                " (Leñadores totales: " + currentWoodcutters + ")");
     }
 
 
@@ -1145,56 +1397,187 @@ public class GameApp extends Application {
     private void collectWoodFromTree(WoodcuttingTask task) {
         if (!task.isActive) return;
 
-        // Verificar que el árbol aún exista
         if (!root.getChildren().contains(task.tree)) {
             task.isActive = false;
             return;
         }
 
-        // Verificar si el árbol ya está agotado
+        // VERIFICAR SI YA SE PROCESÓ ESTE CICLO
+        String cycleKey = "lastCycleProcessed_" + task.tree.getId();
+        Long lastCycleTime = (Long) task.tree.getProperties().get(cycleKey);
+        long currentTime = System.currentTimeMillis();
+
+        // Si ya se procesó un ciclo en los últimos 9 segundos, solo dar madera
+        if (lastCycleTime != null && (currentTime - lastCycleTime) < 9000) {
+            // SOLO DAR MADERA A ESTE LEÑADOR, NO PROCESAR CICLO
+            giveWoodToWoodcutterOnly(task);
+            return;
+        }
+
+        // MARCAR QUE ESTE LEÑADOR PROCESA EL CICLO
+        task.tree.getProperties().put(cycleKey, currentTime);
+
+        // PROCESAR CICLO COMPLETO (solo una vez)
+        processCompleteWoodCycle(task);
+    }
+
+    private void giveWoodToWoodcutterOnly(WoodcuttingTask task) {
+        // Solo dar madera a este leñador, sin procesar ciclo
+        int leñadores = countActiveWoodcuttersOnTree(task.tree);
+        if (leñadores == 0) leñadores = 1;
+
+        int maderaPorLeñador = 25 / leñadores;
+
+        if (territory1 != null && territory1.getTownHall() != null) {
+            territory1.getTownHall().getStoredResources().addResource(ResourceType.WOOD, maderaPorLeñador);
+            task.woodCollected += maderaPorLeñador;
+
+            Platform.runLater(() -> updateResourceDisplay());
+            showWoodCollectionEffect(task.woodcutter, task.tree, maderaPorLeñador);
+
+            System.out.println("🪵 Leñador secundario recibe: +" + maderaPorLeñador + " madera");
+        }
+    }
+
+    private void processCompleteWoodCycle(WoodcuttingTask task) {
+        System.out.println("\n🌳🌳🌳 CICLO COMPLETO PROCESADO 🌳🌳🌳");
+
+        // Obtener estado actual
         Integer remainingCycles = (Integer) task.tree.getProperties().get("remainingCycles");
-        if (remainingCycles != null && remainingCycles <= 0) {
-            System.out.println("⚠️ Árbol ya está talado");
+        if (remainingCycles == null) {
+            remainingCycles = 5;
+            task.tree.getProperties().put("remainingCycles", 5);
+        }
+
+        if (remainingCycles <= 0) {
+            System.out.println("🛑 Árbol ya talado");
             task.isActive = false;
             return;
         }
 
-        // Agregar madera al TownHall
+        // Contar leñadores
+        int leñadores = countActiveWoodcuttersOnTree(task.tree);
+        if (leñadores == 0) leñadores = 1;
+
+        // Calcular distribución
+        int maderaTotalCiclo = 25; // ¡SIEMPRE 25 POR CICLO!
+        int maderaPorLeñador = maderaTotalCiclo / leñadores;
+        int resto = maderaTotalCiclo % leñadores;
+
+        System.out.println("Árbol: " + task.tree.getId());
+        System.out.println("Leñadores activos: " + leñadores);
+        System.out.println("Ciclo actual: " + (6 - remainingCycles) + "/5");
+        System.out.println("Madera total por ciclo: " + maderaTotalCiclo);
+        System.out.println("Madera por leñador: " + maderaPorLeñador);
+
+        // PROCESAR RECOLECCIÓN
         if (territory1 != null && territory1.getTownHall() != null) {
-            territory1.getTownHall().getStoredResources().addResource(ResourceType.WOOD, 25);
+            // 1. Dar madera a TODOS los leñadores
+            int maderaParaDistribuir = maderaPorLeñador * leñadores;
 
-            task.woodCollected += 25;
+            // OPCIÓN A: Dar TODO al TownHall de una vez
+            territory1.getTownHall().getStoredResources().addResource(ResourceType.WOOD, maderaTotalCiclo);
 
-            // Actualizar estado del recurso
-            Integer totalCollected = (Integer) task.tree.getProperties().get("totalCollected");
-            if (totalCollected == null) totalCollected = 0;
-            task.tree.getProperties().put("totalCollected", totalCollected + 25);
-
-            // Actualizar ciclos restantes
-            int newRemainingCycles = task.treeRemainingCycles - 1;
-            task.treeRemainingCycles = newRemainingCycles;
-            task.tree.getProperties().put("remainingCycles", newRemainingCycles);
-
-            // Actualizar display
-            Platform.runLater(() -> updateResourceDisplay());
-
-            // Mostrar efecto visual
-            showWoodCollectionEffect(task.woodcutter, task.tree);
-
-            System.out.println("🪵 +25 Madera recolectada del árbol " + task.tree.getId() +
-                    " (Ciclo: " + (5 - newRemainingCycles) + "/5, Restantes: " + newRemainingCycles + ")");
-
-            // Si ya se recolectó toda la madera, detener
-            if (newRemainingCycles <= 0) {
-                task.isActive = false;
-                System.out.println("✅ Árbol completamente talado");
+            // OPCIÓN B: Dar el resto extra
+            if (resto > 0) {
+                territory1.getTownHall().getStoredResources().addResource(ResourceType.WOOD, resto);
             }
+
+            // 2. Actualizar estado del árbol
+            int nuevosCiclos = remainingCycles - 1;
+            task.treeRemainingCycles = nuevosCiclos;
+            task.tree.getProperties().put("remainingCycles", nuevosCiclos);
+
+            // 3. Actualizar madera acumulada (¡SOLO +25!)
+            Integer totalAcumulado = (Integer) task.tree.getProperties().get("totalCollected");
+            if (totalAcumulado == null) totalAcumulado = 0;
+            int nuevoTotal = totalAcumulado + maderaTotalCiclo; // ¡+25, no +24 o +26!
+            task.tree.getProperties().put("totalCollected", nuevoTotal);
+
+            // 4. Actualizar contador personal
+            task.woodCollected += maderaPorLeñador;
+
+            // 5. LOG CORRECTO
+            System.out.println("Madera añadida al TownHall: +" + maderaTotalCiclo);
+            System.out.println("Ciclos restantes: " + nuevosCiclos);
+            System.out.println("Madera acumulada en árbol: " + nuevoTotal + "/125");
+
+            // 6. Mostrar UI
+            Platform.runLater(() -> {
+                updateResourceDisplay();
+                // Mostrar madera actual para verificar
+                int maderaActual = territory1.getTownHall().getStoredResources().getAmount(ResourceType.WOOD);
+                System.out.println("💰 Madera actual en TownHall: " + maderaActual);
+            });
+
+            // 7. Efecto visual
+            showWoodCollectionEffect(task.woodcutter, task.tree, maderaPorLeñador);
+
+            // 8. Verificar fin
+            if (nuevosCiclos <= 0) {
+                task.isActive = false;
+                System.out.println("✅ ÁRBOL COMPLETAMENTE TALADO");
+
+                // Verificar total
+                if (nuevoTotal < 125) {
+                    int faltante = 125 - nuevoTotal;
+                    territory1.getTownHall().getStoredResources().addResource(ResourceType.WOOD, faltante);
+                    System.out.println("➕ Ajuste final: +" + faltante + " madera");
+                    Platform.runLater(() -> updateResourceDisplay());
+                }
+            }
+
+            System.out.println("=================================\n");
         }
     }
 
-    private void showWoodCollectionEffect(ImageView woodcutter, ImageView tree) {
+    /**
+     * Cuenta cuántos leñadores están realmente trabajando en un árbol
+     */
+    private int countActiveWoodcuttersOnTree(ImageView tree) {
+        int count = 0;
+        for (WoodcuttingTask t : activeWoodcuttingTasks.values()) {
+            if (t.tree == tree && t.isActive) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Identifica si esta tarea pertenece al primer leñador (más antiguo) en el árbol
+     */
+    private boolean isFirstWoodcutterOnTree(ImageView tree, WoodcuttingTask currentTask) {
+        long earliestTime = Long.MAX_VALUE;
+        WoodcuttingTask earliestTask = null;
+
+        for (WoodcuttingTask task : activeWoodcuttingTasks.values()) {
+            if (task.tree == tree && task.isActive && task.taskId != null) {
+                try {
+                    // Extraer timestamp del taskId (formato: "woodcutting_TIMESTAMP_HASHCODE")
+                    String[] parts = task.taskId.split("_");
+                    if (parts.length >= 2) {
+                        long timestamp = Long.parseLong(parts[1]);
+                        if (timestamp < earliestTime) {
+                            earliestTime = timestamp;
+                            earliestTask = task;
+                        }
+                    }
+                } catch (Exception e) {
+                    // Si no se puede parsear, usar la primera encontrada
+                    if (earliestTask == null) {
+                        earliestTask = task;
+                    }
+                }
+            }
+        }
+
+        return currentTask == earliestTask;
+    }
+
+    private void showWoodCollectionEffect(ImageView woodcutter, ImageView tree, int amount) {
         // Crear texto flotante
-        Label woodLabel = new Label("+25 Madera");
+        Label woodLabel = new Label("+" + amount + " Madera");
         woodLabel.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: #228B22;");
 
         // Posicionar entre el leñador y el árbol
@@ -1224,23 +1607,30 @@ public class GameApp extends Application {
         parallel.play();
 
         // Efecto de partículas de madera
-        createWoodParticles(tree);
+        createWoodParticles(tree, amount);
     }
 
-    private void createWoodParticles(ImageView tree) {
+    private void createWoodParticles(ImageView tree, int amount) {
         double treeX = tree.getX() + tree.getFitWidth() / 2;
         double treeY = tree.getY() + tree.getFitHeight() / 2;
 
-        for (int i = 0; i < 5; i++) {
-            Circle particle = new Circle(2, Color.rgb(139, 69, 19, 0.8));
+        // Crear más partículas según la cantidad recolectada
+        int particleCount = 3 + (amount / 12); // Mínimo 3, más si hay mayor cantidad
+
+        for (int i = 0; i < particleCount; i++) {
+            // Tamaño de partícula basado en cantidad (más grande para más madera)
+            double particleSize = Math.min(5.0, 2.0 + (amount / 50.0));
+            Circle particle = new Circle(particleSize, Color.rgb(139, 69, 19, 0.8));
             particle.setCenterX(treeX);
             particle.setCenterY(treeY);
 
             root.getChildren().add(particle);
 
-            // Animación aleatoria
+            // Animación aleatoria - distancia mayor para más cantidad
             double angle = Math.random() * 2 * Math.PI;
-            double distance = 20 + Math.random() * 30;
+            double baseDistance = 20;
+            double extraDistance = (amount / 25.0) * 5; // Más distancia para más madera
+            double distance = baseDistance + Math.random() * 30 + extraDistance;
 
             TranslateTransition move = new TranslateTransition(Duration.seconds(1), particle);
             move.setByX(Math.cos(angle) * distance);
@@ -1254,6 +1644,8 @@ public class GameApp extends Application {
             particleAnim.setOnFinished(e -> root.getChildren().remove(particle));
             particleAnim.play();
         }
+
+        System.out.println("✨ " + particleCount + " partículas de madera creadas (cantidad: " + amount + ")");
     }
 
     private void removeTree(WoodcuttingTask task) {
@@ -1446,11 +1838,14 @@ public class GameApp extends Application {
 
                 task.isActive = false;
 
-                // Guardar el estado actual ANTES de detener
+                // Decrementar contador de mineros activos en ESTA mina
                 if (task.mine != null) {
-                    // El estado ya está actualizado en las propiedades del recurso
-                    System.out.println("💾 Guardando estado de mina: " +
-                            task.mineRemainingCycles + " ciclos restantes");
+                    Integer activeMiners = (Integer) task.mine.getProperties().get("activeMiners");
+                    if (activeMiners != null && activeMiners > 0) {
+                        activeMiners--;
+                        task.mine.getProperties().put("activeMiners", activeMiners);
+                        System.out.println("👥 Mineros restantes en esta mina: " + activeMiners);
+                    }
                 }
 
                 // Detener timelines
@@ -1468,6 +1863,87 @@ public class GameApp extends Application {
                 showMiningCancelledEffect(miner);
             }
         }
+    }
+
+    private void showTooManyWorkersAlert(String resourceType) {
+        Platform.runLater(() -> {
+            Stage alertStage = new Stage();
+            alertStage.initModality(Modality.APPLICATION_MODAL);
+            alertStage.initStyle(StageStyle.TRANSPARENT);
+            alertStage.setTitle("Demasiados trabajadores");
+
+            VBox alertPanel = new VBox(15);
+            alertPanel.setAlignment(Pos.CENTER);
+            alertPanel.setPadding(new Insets(25, 30, 25, 30));
+            alertPanel.setStyle(
+                    "-fx-background-color: rgba(255, 255, 255, 0.95); " +
+                            "-fx-background-radius: 15; " +
+                            "-fx-border-color: #f39c12; " +
+                            "-fx-border-width: 2; " +
+                            "-fx-border-radius: 15; " +
+                            "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 15, 0.5, 0, 5);"
+            );
+
+            Label warningIcon = new Label(resourceType.equals("árbol") ? "🪓" : "👥");
+            warningIcon.setStyle("-fx-font-size: 48px; -fx-padding: 0 0 10 0;");
+
+            Label title = new Label("¡LÍMITE ALCANZADO!");
+            title.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #f39c12;");
+
+            String resourceName = resourceType.equals("árbol") ? "árbol" : "mina";
+            Label message = new Label("Este " + resourceName + " ya tiene el máximo\nde trabajadores permitidos.\n\n" +
+                    "Máximo: 2 trabajadores por " + resourceName);
+            message.setStyle("-fx-font-size: 14px; -fx-text-fill: #7f8c8d; -fx-text-alignment: center;");
+            message.setWrapText(true);
+
+            Button okButton = new Button("Entendido");
+            okButton.setPrefWidth(120);
+            okButton.setPrefHeight(40);
+            okButton.setStyle(
+                    "-fx-background-color: #f39c12; " +
+                            "-fx-background-radius: 6; " +
+                            "-fx-text-fill: white; " +
+                            "-fx-font-weight: bold; " +
+                            "-fx-font-size: 14px; " +
+                            "-fx-cursor: hand;"
+            );
+
+            okButton.setOnMouseEntered(e -> {
+                okButton.setStyle(
+                        "-fx-background-color: #e67e22; " +
+                                "-fx-background-radius: 6; " +
+                                "-fx-text-fill: white; " +
+                                "-fx-font-weight: bold; " +
+                                "-fx-font-size: 14px; " +
+                                "-fx-cursor: hand; " +
+                                "-fx-effect: dropshadow(gaussian, rgba(230, 126, 34, 0.5), 5, 0.5, 0, 1);"
+                );
+            });
+
+            okButton.setOnMouseExited(e -> {
+                okButton.setStyle(
+                        "-fx-background-color: #f39c12; " +
+                                "-fx-background-radius: 6; " +
+                                "-fx-text-fill: white; " +
+                                "-fx-font-weight: bold; " +
+                                "-fx-font-size: 14px; " +
+                                "-fx-cursor: hand; " +
+                                "-fx-effect: null;"
+                );
+            });
+
+            okButton.setOnAction(e -> alertStage.close());
+
+            alertPanel.getChildren().addAll(warningIcon, title, message, okButton);
+
+            Scene scene = new Scene(alertPanel, 350, 300);
+            scene.setFill(Color.TRANSPARENT);
+
+            alertStage.initOwner(root.getScene().getWindow());
+            alertStage.setScene(scene);
+            alertStage.setResizable(false);
+            alertStage.show();
+        });
     }
 
     private void showMiningCancelledEffect(ImageView miner) {
