@@ -118,6 +118,7 @@ public class GameApp extends Application {
         actualPlayer = gameControler.createPlayer("Player1", dominion.core.Color.BLUE);
         gameMap = gameControler.createGameMap();
         territory1 = new Territory();
+        actualPlayer.addTerritory(territory1);
 
         // 1. Obtener tamaño de pantalla
         Rectangle2D screen = Screen.getPrimary().getVisualBounds();
@@ -2130,7 +2131,7 @@ public class GameApp extends Application {
         if (militaryBase == null) return;
 
         // Obtener caballeros del backend
-        List<Knight> backendKnights = militaryBase.getKnights();
+        List<Knight> backendKnights = actualPlayer.getKnights();
         System.out.println("Hay "+ backendKnights.size() + " caballeros--------------------");
 
         // Verificar si hay caballeros nuevos en el backend
@@ -2233,7 +2234,10 @@ public class GameApp extends Application {
                 parallel.setOnFinished(e -> {
                     glowTimeline.play();
                     System.out.println("✨ Caballero creado exitosamente! ID: " + unitId);
+                    updateAttackDisplay();
                 });
+
+
 
                 // Añadir a la escena y lista
                 root.getChildren().add(knightView);
@@ -3903,6 +3907,9 @@ public class GameApp extends Application {
                 territory1 != null && territory1.getTownHall() != null ?
                         String.valueOf(territory1.getTownHall().getStoredResources().getAmount(ResourceType.GOLD)) : "0");
 
+        // ========== ATAQUE ========== (NUEVO - entre oro y timer)
+        HBox attackSection = createAttackSection();
+
         // ========== TIMER INTEGRADO ==========
         gameTimer = new Timer();
         VBox timerPanel = gameTimer.getTimerPanel();
@@ -3910,15 +3917,65 @@ public class GameApp extends Application {
         // APLICAR ESTILOS DEL TOWNHALL AL TIMER
         applyTownHallStyleToTimer(timerPanel);
 
-        // Añadir elementos en orden: Madera - Oro - Timer
-        topPanel.getChildren().addAll(woodSection, goldSection, timerPanel);
+        // Añadir elementos en orden: Madera - Oro - Ataque - Timer
+        topPanel.getChildren().addAll(woodSection, goldSection, attackSection, timerPanel);
 
         // Forzar que el panel se ajuste a su contenido
         topPanel.setMaxWidth(Region.USE_PREF_SIZE);
         topPanel.setMinWidth(Region.USE_PREF_SIZE);
 
-
         return new StackPane(topPanel);
+    }
+
+    /**
+     * Crea una sección para mostrar la fuerza de ataque
+     */
+    private HBox createAttackSection() {
+        HBox section = new HBox(8);
+        section.setAlignment(Pos.CENTER);
+        section.setPadding(new Insets(0, 10, 0, 0));
+
+        // Icono de espadas cruzadas
+        Label iconLabel = new Label("⚔");
+        iconLabel.setStyle("-fx-font-size: 20px;");
+
+        // Contenedor vertical
+        VBox textContainer = new VBox(1);
+        textContainer.setAlignment(Pos.CENTER_LEFT);
+
+        // Nombre del recurso
+        Label nameLabel = new Label("Ataque");
+        nameLabel.setStyle("-fx-font-size: 10px; -fx-text-fill: #000000;");
+
+        // Fuerza de ataque (se calculará dinámicamente)
+        int attackForce = actualPlayer != null ? actualPlayer.calculateAttackForce() : 0;
+        Label amountLabel = new Label(String.valueOf(attackForce));
+        amountLabel.setId("attack_amount");
+        amountLabel.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #c0392b;"); // Rojo para ataque
+
+        textContainer.getChildren().addAll(nameLabel, amountLabel);
+        section.getChildren().addAll(iconLabel, textContainer);
+
+        return section;
+    }
+
+    /**
+     * Actualiza la fuerza de ataque en el panel superior
+     */
+    private void updateAttackDisplay() {
+        if (actualPlayer != null) {
+            int attackForce = actualPlayer.getKnights().size() * Knight.getAttackdamage() ;
+            System.out.println("Caballeros " + actualPlayer.getKnights().size());
+            System.out.println("Ataque: " + attackForce);
+            Label attackLabel = (Label) root.lookup("#attack_amount");
+
+            if (attackLabel != null) {
+                attackLabel.setText(String.valueOf(attackForce));
+                System.out.println("⚔ Ataque actualizado: " + attackForce);
+            } else {
+                System.out.println("⚠️ No se encontró la etiqueta de ataque");
+            }
+        }
     }
 
     /**
@@ -4037,7 +4094,7 @@ public class GameApp extends Application {
 
         // Nombre del recurso
         Label nameLabel = new Label(resourceName);
-        nameLabel.setStyle("-fx-font-size: 10px; -fx-text-fill: #7f8c8d;");
+        nameLabel.setStyle("-fx-font-size: 10px; -fx-text-fill:#000000;");
 
         // Cantidad
         Label amountLabel = new Label(amount);
@@ -4051,7 +4108,7 @@ public class GameApp extends Application {
     }
 
     /**
-     * Actualiza los recursos en el panel superior
+     * Actualiza los recursos y ataque en el panel superior
      */
     private void updateResourceDisplay() {
         if (territory1 != null && territory1.getTownHall() != null) {
@@ -4068,6 +4125,9 @@ public class GameApp extends Application {
                 goldLabel.setText(String.valueOf(gold));
             }
         }
+
+        // Actualizar también el ataque
+        updateAttackDisplay();
     }
 
     /**
@@ -6504,6 +6564,9 @@ public class GameApp extends Application {
             if (knightCreated) {
                 System.out.println("✅ Orden de entrenamiento creada");
 
+                updateAttackDisplay();
+
+
                 // Obtener orden y continuar con el resto...
                 UnitCreationOrder latestOrder = getLatestTrainingOrder(militaryBase);
                 if (latestOrder != null) {
@@ -6512,6 +6575,7 @@ public class GameApp extends Application {
                     showKnightTrainingInProgress(barracksToUse, unitId);
                     restartConstructionUpdateLoopIfNeeded();
                     updateResourceDisplay();
+
 
                     System.out.println("♞ Entrenamiento iniciado - ID: " + unitId);
                 }
@@ -7132,7 +7196,7 @@ public class GameApp extends Application {
             parallel.play();
 
             System.out.println("✅ " + unitType + " creado en: (" + (int)x + ", " + (int)y + ")");
-
+             updateAttackDisplay();
             // Hacer el caballero interactivo
             makeKnightInteractive(unitView, unitType);
 
