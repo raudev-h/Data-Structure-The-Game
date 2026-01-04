@@ -5,6 +5,7 @@ import cu.edu.cujae.ceis.graph.interfaces.ILinkedNotDirectedGraph;
 import cu.edu.cujae.ceis.graph.vertex.Vertex;
 import dominion.model.players.Player;
 import dominion.model.territories.Territory;
+import org.w3c.dom.Node;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -92,4 +93,11 @@ public class GameMap {
         return playerCanAttack;
 
     }
+
+    public ArrayList<Territory> getTerritories(){
+        return territories;
+    }
+
+
+
 }

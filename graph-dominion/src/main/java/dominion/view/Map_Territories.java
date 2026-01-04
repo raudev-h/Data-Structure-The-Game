@@ -1,25 +1,35 @@
 package dominion.view;
 
+import dominion.core.AttackResult;
+import dominion.core.GameControler;
+import dominion.core.GameMap;
+import dominion.model.players.Player;
+import dominion.model.territories.Territory;
 import javafx.animation.*;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
+import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.effect.DropShadow;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.Pane;
-import javafx.scene.layout.StackPane;
-import javafx.scene.layout.VBox;
+import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
+import javafx.stage.Modality;
+import javafx.stage.Stage;
+import javafx.stage.StageStyle;
 import javafx.util.Duration;
 
-public class Map_Territories extends Pane {
-    private GameApp gameApp; //// Referencia a la pantalla principal
-    public int forceTerritory1 = 100;
-    public int forceTerritory2 = 200;
+import java.util.HashSet;
+import java.util.Set;
 
+public class Map_Territories extends Pane {
+    private GameApp gameApp; // Referencia a la pantalla principal
+    private GameControler gameControler;
+    private GameMap gameMap;
+    private Player principalPlayer;
 
     // Tamaños de ventana (se ajustarán automáticamente)
     private double windowWidth;
@@ -31,13 +41,35 @@ public class Map_Territories extends Pane {
     private ImageView enemyTerritory1;
     private ImageView enemyTerritory2;
 
+    // Referencia al territorio conquistado
+    private ImageView conqueredTerritory = null;
+    private int conqueredTerritoryNumber = -1;
+
+    // Panel de información que se muestra al pasar el mouse
+    private VBox defenseInfoPanel;
+
+    // Referencia al territorio actual sobre el que está el mouse
+    private ImageView currentHoveredTerritory;
+    private int currentHoveredTerritoryNumber;
+
     // Panel de confirmación actual
     private Pane currentConfirmationPanel;
+
+    // Overlay para victoria
+    private StackPane victoryOverlay;
+    private boolean isVictoryShowing = false;
+
 
     public Map_Territories(GameApp gameApp, double width, double height) {
         this.gameApp = gameApp;
         this.windowWidth = width;
         this.windowHeight = height;
+        this.gameMap = gameApp.getGameMap();
+        this.principalPlayer = gameApp.getActualPlayer();
+        this.gameControler = gameApp.getGameControler();
+
+        // Cargar territorios ya conquistados
+        loadConqueredTerritories();
 
         // Configurar el tamaño
         setPrefSize(windowWidth, windowHeight);
@@ -72,77 +104,35 @@ public class Map_Territories extends Pane {
             Image mapBackgroundImage = new Image("file:src/main/resources/images/map_background (4).png");
             ImageView mapBackground = new ImageView(mapBackgroundImage);
 
-            // **OPCIÓN 2: Usar StackPane para centrado automático**
             mapBackground.setPreserveRatio(true);
             mapBackground.setSmooth(true);
 
-            // Ajustar tamaño para cubrir todo el área (puede recortar bordes)
+            // Ajustar tamaño para cubrir todo el área
             mapBackground.fitWidthProperty().bind(widthProperty());
             mapBackground.fitHeightProperty().bind(heightProperty());
+            mapBackground.setPreserveRatio(false);
 
-            // **FORZAR que se escale para cubrir todo (puede distorsionar)**
-            mapBackground.setPreserveRatio(false); // Esto permitirá que cubra todo exactamente
-
-            // **O mantener proporción pero centrar:**
-            // mapBackground.setPreserveRatio(true);
-
-            // Calcular posición para centrar
+            // Posicionar
             mapBackground.setX(0);
             mapBackground.setY(0);
 
-            // **Listener para reajustar cuando cambie el tamaño**
+            // Listener para reajustar cuando cambie el tamaño
             widthProperty().addListener((obs, oldVal, newVal) -> {
                 if (mapBackground.isPreserveRatio()) {
-                    // Si mantiene proporción, centrar horizontalmente
-                    double imageWidth = mapBackground.getImage().getWidth();
-                    double imageHeight = mapBackground.getImage().getHeight();
-                    double aspectRatio = imageWidth / imageHeight;
-
-                    double newHeight = newVal.doubleValue() / aspectRatio;
-                    if (newHeight < getHeight()) {
-                        // Si la altura calculada es menor que la disponible
-                        mapBackground.setFitWidth(newVal.doubleValue());
-                        mapBackground.setFitHeight(newHeight);
-                        mapBackground.setX(0);
-                        mapBackground.setY((getHeight() - newHeight) / 2);
-                    } else {
-                        // Si necesita ajustar por altura
-                        mapBackground.setFitHeight(getHeight());
-                        mapBackground.setFitWidth(getHeight() * aspectRatio);
-                        mapBackground.setX((newVal.doubleValue() - (getHeight() * aspectRatio)) / 2);
-                        mapBackground.setY(0);
-                    }
+                    adjustBackgroundPosition(mapBackground);
                 }
             });
 
             heightProperty().addListener((obs, oldVal, newVal) -> {
                 if (mapBackground.isPreserveRatio()) {
-                    // Si mantiene proporción, centrar verticalmente
-                    double imageWidth = mapBackground.getImage().getWidth();
-                    double imageHeight = mapBackground.getImage().getHeight();
-                    double aspectRatio = imageWidth / imageHeight;
-
-                    double newWidth = newVal.doubleValue() * aspectRatio;
-                    if (newWidth < getWidth()) {
-                        // Si el ancho calculado es menor que el disponible
-                        mapBackground.setFitHeight(newVal.doubleValue());
-                        mapBackground.setFitWidth(newWidth);
-                        mapBackground.setX((getWidth() - newWidth) / 2);
-                        mapBackground.setY(0);
-                    } else {
-                        // Si necesita ajustar por ancho
-                        mapBackground.setFitWidth(getWidth());
-                        mapBackground.setFitHeight(getWidth() / aspectRatio);
-                        mapBackground.setX(0);
-                        mapBackground.setY((newVal.doubleValue() - (getWidth() / aspectRatio)) / 2);
-                    }
+                    adjustBackgroundPosition(mapBackground);
                 }
             });
 
             // Añadir al principio (fondo)
             getChildren().add(0, mapBackground);
 
-            // **Inicializar posición después de cargar la imagen**
+            // Inicializar posición después de cargar la imagen
             mapBackground.imageProperty().addListener((obs, oldImg, newImg) -> {
                 if (newImg != null) {
                     adjustBackgroundPosition(mapBackground);
@@ -156,17 +146,15 @@ public class Map_Territories extends Pane {
 
         } catch (Exception e) {
             System.err.println("❌ Error al cargar el fondo del mapa: " + e.getMessage());
-            // Si falla, usar fondo sólido apropiado para un mapa
             javafx.scene.shape.Rectangle fallbackBackground = new javafx.scene.shape.Rectangle();
             fallbackBackground.widthProperty().bind(widthProperty());
             fallbackBackground.heightProperty().bind(heightProperty());
-            fallbackBackground.setFill(Color.rgb(40, 45, 70)); // Azul oscuro apropiado para mapa
+            fallbackBackground.setFill(Color.rgb(40, 45, 70));
 
             getChildren().add(0, fallbackBackground);
         }
     }
 
-    // **Nuevo método auxiliar para ajustar posición del fondo**
     private void adjustBackgroundPosition(ImageView mapBackground) {
         if (mapBackground.getImage() == null) return;
 
@@ -178,22 +166,18 @@ public class Map_Territories extends Pane {
         double containerAspectRatio = containerWidth / containerHeight;
 
         if (mapBackground.isPreserveRatio()) {
-            // Mantener proporción de la imagen
             if (aspectRatio > containerAspectRatio) {
-                // La imagen es más ancha que el contenedor - ajustar por ancho
                 mapBackground.setFitWidth(containerWidth);
                 mapBackground.setFitHeight(containerWidth / aspectRatio);
                 mapBackground.setX(0);
                 mapBackground.setY((containerHeight - (containerWidth / aspectRatio)) / 2);
             } else {
-                // La imagen es más alta que el contenedor - ajustar por altura
                 mapBackground.setFitHeight(containerHeight);
                 mapBackground.setFitWidth(containerHeight * aspectRatio);
                 mapBackground.setX((containerWidth - (containerHeight * aspectRatio)) / 2);
                 mapBackground.setY(0);
             }
         } else {
-            // Distorsionar para cubrir todo exactamente
             mapBackground.setFitWidth(containerWidth);
             mapBackground.setFitHeight(containerHeight);
             mapBackground.setX(0);
@@ -203,36 +187,25 @@ public class Map_Territories extends Pane {
 
     private void setupTerritoriesMap() {
         try {
-            // Cargar imagen del mapa de territorios (superpuesto sobre el fondo)
             Image mapImage = new Image("file:src/main/resources/images/mapaTerritorios.png");
             backgroundMap = new ImageView(mapImage);
 
-            // Hacer que la imagen OCUPE TODA LA PANTALLA y mantenga proporción
             backgroundMap.setPreserveRatio(true);
             backgroundMap.setSmooth(true);
-
-            // Ajustar tamaño para cubrir toda el área disponible
             backgroundMap.fitWidthProperty().bind(widthProperty());
             backgroundMap.fitHeightProperty().bind(heightProperty());
-
-            // Centrar la imagen
             backgroundMap.setX(0);
             backgroundMap.setY(0);
-
-            // Hacer el mapa de territorios semi-transparente para ver el fondo
             backgroundMap.setOpacity(0.85);
 
-            // Efecto de sombra
             DropShadow shadow = new DropShadow();
             shadow.setColor(Color.rgb(0, 0, 0, 0.7));
             shadow.setRadius(30);
             shadow.setSpread(0.1);
             backgroundMap.setEffect(shadow);
 
-            // Añadir en posición 1 (después del fondo)
             getChildren().add(1, backgroundMap);
 
-            // Listener para ajustar cuando cambie el tamaño
             widthProperty().addListener((obs, oldVal, newVal) -> {
                 adjustTerritoryPositions();
             });
@@ -252,36 +225,18 @@ public class Map_Territories extends Pane {
             Image currentImage = new Image("file:src/main/resources/images/territorioActual.png");
             currentTerritory = new ImageView(currentImage);
 
-            // Tamaño proporcional al ancho de la pantalla
-            double territorySize = windowWidth * 0.1; // 10% del ancho
+            double territorySize = windowWidth * 0.1;
             currentTerritory.setFitWidth(territorySize);
             currentTerritory.setFitHeight(territorySize);
             currentTerritory.setPreserveRatio(true);
 
-            // Efecto especial para territorio actual
             DropShadow glow = new DropShadow();
-            glow.setColor(Color.rgb(0, 255, 0, 0.8)); // Verde para territorio propio
+            glow.setColor(Color.rgb(0, 255, 0, 0.8));
             glow.setRadius(20);
             glow.setSpread(0.3);
             currentTerritory.setEffect(glow);
 
-            // Etiqueta
             Label currentLabel = createTerritoryLabel("Tu Territorio");
-
-            // Animación de pulso
-            Timeline pulse = new Timeline(
-                    new KeyFrame(Duration.millis(0), e -> {
-                        currentTerritory.setScaleX(1.0);
-                        currentTerritory.setScaleY(1.0);
-                    }),
-                    new KeyFrame(Duration.millis(1000), e -> {
-                        currentTerritory.setScaleX(1.08);
-                        currentTerritory.setScaleY(1.08);
-                    })
-            );
-            pulse.setCycleCount(Timeline.INDEFINITE);
-            pulse.setAutoReverse(true);
-            pulse.play();
 
             // ========== TERRITORIOS ENEMIGOS ==========
             Image enemyImage = new Image("file:src/main/resources/images/territorioEnemigo.png");
@@ -298,31 +253,37 @@ public class Map_Territories extends Pane {
             enemyTerritory2.setFitHeight(territorySize * 1.0);
             enemyTerritory2.setPreserveRatio(true);
 
-
-            // Efecto rojo para enemigos
             DropShadow enemyGlow = new DropShadow();
-            enemyGlow.setColor(Color.rgb(255, 0, 0, 0.8)); // Rojo para enemigos
+            enemyGlow.setColor(Color.rgb(255, 0, 0, 0.8));
             enemyGlow.setRadius(15);
             enemyGlow.setSpread(0.2);
             enemyTerritory1.setEffect(enemyGlow);
             enemyTerritory2.setEffect(enemyGlow);
 
-            // Etiquetas para enemigos
             Label enemyLabel1 = createTerritoryLabel("Nivel 1");
             Label enemyLabel2 = createTerritoryLabel("Nivel Final");
 
-            // Hacer territorios enemigos interactivos
-            makeTerritoryInteractive(enemyTerritory1, "Nivel 1", 1);
-            makeTerritoryInteractive(enemyTerritory2, "Nivel Final", 2);
+            // VERIFICAR si ya están conquistados ANTES de hacerlos interactivos
+            Set<Integer> conquered = gameApp.getConqueredTerritories();
 
-            // Añadir todo al pane
+            if (!conquered.contains(1)) {
+                makeTerritoryInteractive(enemyTerritory1, "Nivel 1", 1);
+            } else {
+                markTerritoryAsConquered(enemyTerritory1, 1);
+            }
+
+            if (!conquered.contains(2)) {
+                makeTerritoryInteractive(enemyTerritory2, "Nivel Final", 2);
+            } else {
+                markTerritoryAsConquered(enemyTerritory2, 2);
+            }
+
             getChildren().addAll(
                     currentTerritory, currentLabel,
                     enemyTerritory1, enemyLabel1,
                     enemyTerritory2, enemyLabel2
             );
 
-            // Posicionar territorios
             adjustTerritoryPositions();
 
         } catch (Exception e) {
@@ -331,30 +292,24 @@ public class Map_Territories extends Pane {
         }
     }
 
-    /**
-     * Ajusta las posiciones de los territorios en diagonal con separación uniforme
-     */
     private void adjustTerritoryPositions() {
         double currentWidth = getWidth();
         double currentHeight = getHeight();
 
-        // Tamaño de los territorios (todos iguales para uniformidad)
-        double territorySize = windowWidth * 0.08; // 8% del ancho original
+        double territorySize = windowWidth * 0.08;
 
-        // Configuración de la diagonal
-        double startX = currentWidth * 0.15;      // Inicio en 15% del ancho
-        double startY = currentHeight * 0.2;      // Inicio en 20% del alto
-        double spacingX = currentWidth * 0.2;     // Espaciado horizontal 20%
-        double spacingY = currentHeight * 0.15;   // Espaciado vertical 15%
+        double startX = currentWidth * 0.15;
+        double startY = currentHeight * 0.2;
+        double spacingX = currentWidth * 0.2;
+        double spacingY = currentHeight * 0.15;
 
-        // Posición 1: Tu territorio (esquina superior izquierda de la diagonal)
+        // Posición 1: Tu territorio
         if (currentTerritory != null) {
             currentTerritory.setFitWidth(territorySize);
             currentTerritory.setFitHeight(territorySize);
             currentTerritory.setX(startX);
             currentTerritory.setY(startY);
 
-            // Ajustar etiqueta
             if (getChildren().indexOf(currentTerritory) + 1 < getChildren().size()) {
                 Label label = (Label) getChildren().get(getChildren().indexOf(currentTerritory) + 1);
                 label.setLayoutX(currentTerritory.getX() + currentTerritory.getFitWidth()/2 - 40);
@@ -362,7 +317,7 @@ public class Map_Territories extends Pane {
             }
         }
 
-        // Posición 2: Enemigo 1 (segundo en la diagonal)
+        // Posición 2: Enemigo 1
         if (enemyTerritory1 != null) {
             enemyTerritory1.setFitWidth(territorySize * 0.9);
             enemyTerritory1.setFitHeight(territorySize * 0.9);
@@ -376,7 +331,7 @@ public class Map_Territories extends Pane {
             }
         }
 
-        // Posición 3: Enemigo 2 (tercero en la diagonal)
+        // Posición 3: Enemigo 2
         if (enemyTerritory2 != null) {
             enemyTerritory2.setFitWidth(territorySize);
             enemyTerritory2.setFitHeight(territorySize);
@@ -405,17 +360,60 @@ public class Map_Territories extends Pane {
     }
 
     private void makeTerritoryInteractive(ImageView territory, String name, int territoryNumber) {
-        territory.setOnMouseClicked(e -> {
-            System.out.println("⚔ Atacando " + name + "...");
-            showConquestConfirmation(name, territoryNumber);
+        // VERIFICAR primero si ya está conquistado
+        if (gameApp.isTerritoryConquered(territoryNumber)) {
+            System.out.println("⚠️ Territorio " + territoryNumber + " ya está conquistado, no hacer interactivo");
+            return;
+        }
 
-            // Efecto visual al hacer clic
-            FadeTransition flash = new FadeTransition(Duration.millis(150), territory);
-            flash.setFromValue(1.0);
-            flash.setToValue(0.6);
-            flash.setAutoReverse(true);
-            flash.setCycleCount(2);
-            flash.play();
+        territory.setOnMouseClicked(e -> {
+                    if (gameApp.isTerritoryConquered(territoryNumber)) {
+                        System.out.println("⚠️ Este territorio ya fue conquistado");
+                        return;
+                        }
+            Territory actual = gameApp.getGameMap().getTerritories().get(territoryNumber);
+            boolean puedeAtacar = gameMap.playerCanAttack(principalPlayer, actual);
+
+            if(puedeAtacar) {
+                System.out.println("⚔ Atacando " + name + "...");
+                AttackResult attackResult = gameControler.handleAttack(principalPlayer, actual);
+                System.out.println("Attack Result: "+ attackResult + " ---------");
+
+                if(attackResult.equals(AttackResult.VICTORY)){
+                    // ¡Victoria! Mostrar pantalla de victoria
+                    showVictoryScreen(territory, territoryNumber, name);
+
+                    // Cambiar el territorio a verde (propio)
+                    conquerTerritory(territory, territoryNumber);
+
+                } else if (attackResult.equals(AttackResult.DEFEAT)) {
+                    // Mostrar pantalla de derrota
+                    showDefeatScreen();
+                }
+
+                FadeTransition flash = new FadeTransition(Duration.millis(150), territory);
+                flash.setFromValue(1.0);
+                flash.setToValue(0.6);
+                flash.setAutoReverse(true);
+                flash.setCycleCount(2);
+                flash.play();
+            }
+            else{
+                showNotAdjacentAlert();
+
+                javafx.animation.Timeline errorFlash = new javafx.animation.Timeline(
+                        new javafx.animation.KeyFrame(Duration.millis(0),
+                                ev -> territory.setEffect(createRedGlowEffect())),
+                        new javafx.animation.KeyFrame(Duration.millis(100),
+                                ev -> territory.setEffect(createNormalGlowEffect())),
+                        new javafx.animation.KeyFrame(Duration.millis(200),
+                                ev -> territory.setEffect(createRedGlowEffect())),
+                        new javafx.animation.KeyFrame(Duration.millis(300),
+                                ev -> territory.setEffect(createNormalGlowEffect()))
+                );
+                errorFlash.setCycleCount(2);
+                errorFlash.play();
+            }
         });
 
         territory.setOnMouseEntered(e -> {
@@ -423,11 +421,12 @@ public class Map_Territories extends Pane {
             territory.setScaleX(1.15);
             territory.setScaleY(1.15);
 
-            // Resaltar
             DropShadow highlight = new DropShadow();
             highlight.setColor(Color.rgb(255, 255, 100, 0.9));
             highlight.setRadius(25);
             territory.setEffect(highlight);
+
+            showSimpleDefenseInfo(territory, territoryNumber);
         });
 
         territory.setOnMouseExited(e -> {
@@ -435,224 +434,338 @@ public class Map_Territories extends Pane {
             territory.setScaleX(1.0);
             territory.setScaleY(1.0);
 
-            // Restaurar efecto rojo
-            DropShadow enemyGlow = new DropShadow();
-            enemyGlow.setColor(Color.rgb(255, 0, 0, 0.8));
-            enemyGlow.setRadius(15);
-            territory.setEffect(enemyGlow);
+            // Si es un territorio conquistado, mantenerlo verde
+            if (conqueredTerritory != null && territory == conqueredTerritory) {
+                DropShadow greenGlow = new DropShadow();
+                greenGlow.setColor(Color.rgb(0, 255, 0, 0.8));
+                greenGlow.setRadius(20);
+                greenGlow.setSpread(0.3);
+                territory.setEffect(greenGlow);
+            } else {
+                // Si no, mantener el rojo de enemigo
+                DropShadow enemyGlow = new DropShadow();
+                enemyGlow.setColor(Color.rgb(255, 0, 0, 0.8));
+                enemyGlow.setRadius(15);
+                territory.setEffect(enemyGlow);
+            }
+
+            hideSimpleDefenseInfo();
         });
     }
 
-    private void showConquestConfirmation(String territoryName, int territoryNumber) {
-        // Remover panel anterior si existe
-        if (currentConfirmationPanel != null) {
-            getChildren().remove(currentConfirmationPanel);
-        }
+    /**
+     * Muestra la pantalla de victoria con overlay oscuro
+     */
+    private void showVictoryScreen(ImageView conqueredTerritory, int territoryNumber, String territoryName) {
+        if (isVictoryShowing) return;
+        isVictoryShowing = true;
 
-        // Crear panel de confirmación
-        VBox confirmationPanel = new VBox(15);
-        confirmationPanel.setAlignment(Pos.CENTER);
-        confirmationPanel.setPadding(new Insets(25, 30, 25, 30));
-        confirmationPanel.setStyle(
-                "-fx-background-color: rgba(255, 255, 255, 0.95); " +
-                        "-fx-background-radius: 15; " +
-                        "-fx-border-color: #e74c3c; " +
-                        "-fx-border-width: 2; " +
-                        "-fx-border-radius: 15; " +
-                        "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 20, 0.5, 0, 5);"
-        );
+        // Crear overlay oscuro (85% opacidad)
+        victoryOverlay = new StackPane();
+        victoryOverlay.setStyle("-fx-background-color: rgba(0, 0, 0, 0.85);");
+        victoryOverlay.setPrefSize(getWidth(), getHeight());
+        victoryOverlay.setMouseTransparent(false); // Permitir interacción con el botón
 
-        Label title = new Label("⚔ CONQUISTAR " + territoryName.toUpperCase() + " ⚔");
-        title.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #e74c3c;");
+        // Panel de victoria
+        VBox victoryPanel = createVictoryPanel(territoryName);
+        victoryPanel.setOpacity(0);
+        victoryPanel.setScaleX(0.9);
+        victoryPanel.setScaleY(0.9);
 
-        // Información del territorio
-        Label infoLabel = new Label(
-                "Fuerza estimada del enemigo: " + (calcularFuerzaTerritorio(territoryNumber)) + "\n" +
-                        "¿Deseas atacar este territorio?"
-        );
-        infoLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #2c3e50; -fx-text-alignment: center;");
-        infoLabel.setWrapText(true);
+        victoryOverlay.getChildren().add(victoryPanel);
+        StackPane.setAlignment(victoryPanel, Pos.CENTER);
 
-        // Botones
-        HBox buttonBox = new HBox(20);
-        buttonBox.setAlignment(Pos.CENTER);
-
-        Button attackButton = createMapButton("¡ATACAR!", "#e74c3c");
-        attackButton.setPrefWidth(150);
-        attackButton.setPrefHeight(45);
-        attackButton.setOnAction(e -> {
-            System.out.println("⚔¡Ataque confirmado a " + territoryName + "!");
-            startConquestBattle(territoryNumber);
-            getChildren().remove(confirmationPanel);
-            currentConfirmationPanel = null;
-        });
-
-        Button cancelButton = createMapButton("CANCELAR", "#7f8c8d");
-        cancelButton.setPrefWidth(150);
-        cancelButton.setPrefHeight(45);
-        cancelButton.setOnAction(e -> {
-            getChildren().remove(confirmationPanel);
-            currentConfirmationPanel = null;
-        });
-
-        buttonBox.getChildren().addAll(attackButton, cancelButton);
-
-        confirmationPanel.getChildren().addAll(title, infoLabel, buttonBox);
-
-        // Posicionar en el centro
-        confirmationPanel.setLayoutX((getWidth() - 400) / 2);
-        confirmationPanel.setLayoutY((getHeight() - 250) / 2);
-
-        getChildren().add(confirmationPanel);
-        currentConfirmationPanel = confirmationPanel;
+        // Añadir overlay a la escena
+        getChildren().add(victoryOverlay);
+        victoryOverlay.toFront();
 
         // Animación de entrada
-        confirmationPanel.setScaleX(0.8);
-        confirmationPanel.setScaleY(0.8);
-        confirmationPanel.setOpacity(0);
+        FadeTransition overlayFade = new FadeTransition(Duration.millis(500), victoryOverlay);
+        overlayFade.setFromValue(0);
+        overlayFade.setToValue(1);
 
-        ScaleTransition scale = new ScaleTransition(Duration.millis(300), confirmationPanel);
-        scale.setToX(1.0);
-        scale.setToY(1.0);
+        FadeTransition panelFade = new FadeTransition(Duration.millis(400), victoryPanel);
+        panelFade.setFromValue(0);
+        panelFade.setToValue(1);
+        panelFade.setDelay(Duration.millis(100));
 
-        FadeTransition fade = new FadeTransition(Duration.millis(300), confirmationPanel);
-        fade.setToValue(1.0);
+        ScaleTransition panelScale = new ScaleTransition(Duration.millis(400), victoryPanel);
+        panelScale.setFromX(0.9);
+        panelScale.setFromY(0.9);
+        panelScale.setToX(1.0);
+        panelScale.setToY(1.0);
+        panelScale.setDelay(Duration.millis(100));
+        panelScale.setInterpolator(javafx.animation.Interpolator.EASE_OUT);
 
-        ParallelTransition entrance = new ParallelTransition(scale, fade);
+        ParallelTransition entrance = new ParallelTransition(overlayFade, panelFade, panelScale);
         entrance.play();
+
+        System.out.println("🎉 Mostrando pantalla de victoria para territorio: " + territoryName);
     }
 
-    private int calcularFuerzaTerritorio(int numeroTerritorio){
-        int fuerza = 0;
-        if(numeroTerritorio == 1){
-            return forceTerritory1;
-        }
-        else{
-            return forceTerritory2;
-        }
-    }
+    /**
+     * Crea el panel de victoria con la imagen y botón
+     */
+    private VBox createVictoryPanel(String territoryName) {
+        VBox panel = new VBox(20);
+        panel.setAlignment(Pos.CENTER);
+        panel.setPadding(new Insets(30, 40, 30, 40));
+        panel.setMaxWidth(400);
+        panel.setMaxHeight(500);
 
-    private void startConquestBattle(int territoryNumber) {
-        System.out.println("⚔ Iniciando batalla por territorio #" + territoryNumber);
-
-        // Mostrar mensaje de batalla
-        showBattleMessage(territoryNumber);
-    }
-
-    private void showBattleMessage(int territoryNumber) {
-        VBox messagePanel = new VBox(15);
-        messagePanel.setAlignment(Pos.CENTER);
-        messagePanel.setPadding(new Insets(25, 30, 25, 30));
-        messagePanel.setStyle(
-                "-fx-background-color: rgba(255, 255, 255, 0.95); " +
+        // MISMO estilo EXACTO que el TownHall (50% opacidad)
+        panel.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.50); " +
                         "-fx-background-radius: 15; " +
-                        "-fx-border-color: #3498db; " +
+                        "-fx-border-color: #2ecc71; " + // Verde para victoria
                         "-fx-border-width: 2; " +
                         "-fx-border-radius: 15; " +
-                        "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 20, 0.5, 0, 5);"
+                        "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.15), 15, 0.5, 0, 3);"
         );
 
-        Label title = new Label("⚔ ¡BATALLA EN CURSO! ⚔");
-        title.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #3498db;");
+        try {
+            // Cargar imagen de victoria
+            Image victoryImage = new Image("file:src/main/resources/images/Victory.png");
+            ImageView victoryImageView = new ImageView(victoryImage);
+            victoryImageView.setPreserveRatio(true);
+            victoryImageView.setFitWidth(250);
 
-        Label message = new Label(
-                "Tu ejército se dirige al territorio #" + territoryNumber + "\n\n" +
-                        "La batalla comenzará en breve...\n" +
-                        "Puedes seguir construyendo mientras tanto.\n\n" +
-                        "¡Buena suerte!"
-        );
-        message.setStyle("-fx-font-size: 14px; -fx-text-fill: #2c3e50; -fx-text-alignment: center;");
-        message.setWrapText(true);
+            // Título
+            Label titleLabel = new Label("¡VICTORIA!");
+            titleLabel.setStyle("-fx-font-size: 28px; -fx-font-weight: bold; -fx-text-fill: #27ae60;");
 
-        Button okButton = createMapButton("CONTINUAR", "#3498db");
-        okButton.setPrefWidth(150);
-        okButton.setPrefHeight(45);
-        okButton.setOnAction(e -> {
-            getChildren().remove(messagePanel);
-            // Opcional: cerrar el mapa después de iniciar batalla
-            // closeMap();
-        });
+            // Mensaje de victoria
+            Label messageLabel = new Label("Has conquistado " + territoryName + "!");
+            messageLabel.setStyle("-fx-font-size: 18px; -fx-text-fill: #2c3e50; -fx-font-weight: bold;");
 
-        messagePanel.getChildren().addAll(title, message, okButton);
+            // Separador elegante
+            Region separator = new Region();
+            separator.setPrefHeight(2);
+            separator.setPrefWidth(200);
+            separator.setStyle("-fx-background-color: linear-gradient(to right, transparent, #27ae60, transparent);");
 
-        // Posicionar
-        messagePanel.setLayoutX((getWidth() - 400) / 2);
-        messagePanel.setLayoutY(100); // Parte superior
+            // Botón para cerrar el mapa
+            Button closeMapButton = createVictoryButton("CONTINUAR");
+            closeMapButton.setOnAction(e -> {
+                hideVictoryScreen();
 
-        getChildren().add(messagePanel);
+            });
 
-        // Animación
-        messagePanel.setScaleX(0.8);
-        messagePanel.setScaleY(0.8);
-        messagePanel.setOpacity(0);
+            panel.getChildren().addAll(
+                    victoryImageView,
+                    titleLabel,
+                    messageLabel,
+                    separator,
+                    closeMapButton
+            );
 
-        ScaleTransition scale = new ScaleTransition(Duration.millis(300), messagePanel);
-        scale.setToX(1.0);
-        scale.setToY(1.0);
+        } catch (Exception ex) {
+            System.err.println("❌ Error al cargar imagen de victoria: " + ex.getMessage());
 
-        FadeTransition fade = new FadeTransition(Duration.millis(300), messagePanel);
-        fade.setToValue(1.0);
+            // Placeholder si no se carga la imagen
+            Label victoryText = new Label("¡VICTORIA!\nHas conquistado " + territoryName + "!");
+            victoryText.setStyle("-fx-font-size: 24px; -fx-font-weight: bold; -fx-text-fill: #27ae60; -fx-text-alignment: center;");
+            victoryText.setWrapText(true);
 
-        ParallelTransition entrance = new ParallelTransition(scale, fade);
-        entrance.play();
+            Button closeMapButton = createVictoryButton("CONTINUAR");
+            closeMapButton.setOnAction(e -> {
+                hideVictoryScreen();
+                closeMap();
+            });
+
+            panel.getChildren().addAll(victoryText, closeMapButton);
+        }
+
+        return panel;
     }
 
-    private Button createMapButton(String text, String color) {
-        Button button = new Button(text);
-        button.setStyle(
-                "-fx-background-color: " + color + "; " +
+    /**
+     * Crea botón para pantalla de victoria con el MISMO estilo que GameApp
+     */
+    private Button createVictoryButton(String text) {
+        HBox buttonContent = new HBox(8);
+        buttonContent.setAlignment(Pos.CENTER);
+        buttonContent.setPadding(new Insets(10, 25, 10, 25));
+
+        Label textLabel = new Label(text);
+        textLabel.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;");
+
+        buttonContent.getChildren().add(textLabel);
+
+        Button button = new Button();
+        button.setGraphic(buttonContent);
+        button.setPrefWidth(200);
+        button.setPrefHeight(50);
+
+        // ESTILO BASE con 50% opacidad igual que GameApp
+        String baseStyle =
+                "-fx-background-color: rgba(255, 255, 255, 0.50); " +
                         "-fx-background-radius: 8; " +
-                        "-fx-border-color: " + darkenColor(color) + "; " +
+                        "-fx-border-color: #2ecc71; " + // Verde para victoria
                         "-fx-border-width: 2; " +
                         "-fx-border-radius: 8; " +
                         "-fx-cursor: hand; " +
-                        "-fx-text-fill: white; " +
-                        "-fx-font-size: 14px; " +
-                        "-fx-font-weight: bold;"
-        );
+                        "-fx-text-fill: #2c3e50;";
 
+        button.setStyle(baseStyle);
+
+        // EFECTO HOVER
         button.setOnMouseEntered(e -> {
-            button.setStyle(
-                    "-fx-background-color: " + darkenColor(color) + "; " +
+            String hoverStyle =
+                    "-fx-background-color: rgba(236, 240, 241, 0.50); " +
                             "-fx-background-radius: 8; " +
-                            "-fx-border-color: " + darkenColor(darkenColor(color)) + "; " +
+                            "-fx-border-color: #27ae60; " + // Verde más oscuro
                             "-fx-border-width: 2.5; " +
                             "-fx-border-radius: 8; " +
                             "-fx-cursor: hand; " +
-                            "-fx-text-fill: white; " +
-                            "-fx-font-size: 14px; " +
-                            "-fx-font-weight: bold; " +
-                            "-fx-effect: dropshadow(gaussian, " + color + ", 10, 0.5, 0, 3);"
-            );
+                            "-fx-effect: dropshadow(gaussian, rgba(46, 204, 113, 0.4), 8, 0.5, 0, 2);";
+
+            button.setStyle(hoverStyle);
             button.setScaleX(1.05);
             button.setScaleY(1.05);
         });
 
         button.setOnMouseExited(e -> {
-            button.setStyle(
-                    "-fx-background-color: " + color + "; " +
-                            "-fx-background-radius: 8; " +
-                            "-fx-border-color: " + darkenColor(color) + "; " +
-                            "-fx-border-width: 2; " +
-                            "-fx-border-radius: 8; " +
-                            "-fx-cursor: hand; " +
-                            "-fx-text-fill: white; " +
-                            "-fx-font-size: 14px; " +
-                            "-fx-font-weight: bold; " +
-                            "-fx-effect: null;"
-            );
+            button.setStyle(baseStyle);
             button.setScaleX(1.0);
             button.setScaleY(1.0);
+        });
+
+        // Efecto al presionar
+        button.setOnMousePressed(e -> {
+            button.setStyle(
+                    "-fx-background-color: rgba(220, 220, 220, 0.50); " +
+                            "-fx-background-radius: 8; " +
+                            "-fx-border-color: #229954; " + // Verde más oscuro aún
+                            "-fx-border-width: 3; " +
+                            "-fx-border-radius: 8; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-text-fill: #2c3e50;"
+            );
+        });
+
+        button.setOnMouseReleased(e -> {
+            button.setStyle(baseStyle);
         });
 
         return button;
     }
 
-    private String darkenColor(String color) {
-        if (color.equals("#e74c3c")) return "#c0392b";
-        if (color.equals("#3498db")) return "#2980b9";
-        if (color.equals("#7f8c8d")) return "#616a6b";
-        return color;
+    /**
+     * Oculta la pantalla de victoria con animación
+     */
+    private void hideVictoryScreen() {
+        if (victoryOverlay == null) return;
+
+        // Obtener el panel de victoria
+        VBox victoryPanel = null;
+        for (Node node : victoryOverlay.getChildren()) {
+            if (node instanceof VBox) {
+                victoryPanel = (VBox) node;
+                break;
+            }
+        }
+
+        // Animación de salida
+        if (victoryPanel != null) {
+            FadeTransition panelFade = new FadeTransition(Duration.millis(300), victoryPanel);
+            panelFade.setToValue(0);
+
+            ScaleTransition panelScale = new ScaleTransition(Duration.millis(300), victoryPanel);
+            panelScale.setToX(0.9);
+            panelScale.setToY(0.9);
+
+            FadeTransition overlayFade = new FadeTransition(Duration.millis(400), victoryOverlay);
+            overlayFade.setToValue(0);
+            overlayFade.setDelay(Duration.millis(100));
+
+            overlayFade.setOnFinished(e -> {
+                getChildren().remove(victoryOverlay);
+                victoryOverlay = null;
+                isVictoryShowing = false;
+            });
+
+            ParallelTransition exit = new ParallelTransition(panelFade, panelScale, overlayFade);
+            exit.play();
+        } else {
+            getChildren().remove(victoryOverlay);
+            victoryOverlay = null;
+            isVictoryShowing = false;
+        }
+    }
+
+    /**
+     * Muestra pantalla de derrota
+     */
+    private void showDefeatScreen() {
+        // Implementación similar a showVictoryScreen pero con rojo
+        // Podrías añadir esto si quieres
+        System.out.println("💀 Mostrar pantalla de derrota");
+    }
+
+    /**
+     * Conquista un territorio (cambia su apariencia)
+     */
+    /**
+     * Conquista un territorio (cambia su apariencia y guarda estado)
+     */
+    private void conquerTerritory(ImageView territory, int territoryNumber) {
+        try {
+            // Guardar referencia al territorio conquistado
+            conqueredTerritory = territory;
+            conqueredTerritoryNumber = territoryNumber;
+
+            // Guardar en GameApp para persistencia
+            gameApp.addConqueredTerritory(territoryNumber);
+
+            // Cambiar la imagen a territorio propio
+            Image conqueredImage = new Image("file:src/main/resources/images/territorioActual.png");
+            territory.setImage(conqueredImage);
+
+            // Cambiar el efecto a verde
+            DropShadow greenGlow = new DropShadow();
+            greenGlow.setColor(Color.rgb(0, 255, 0, 0.8));
+            greenGlow.setRadius(20);
+            greenGlow.setSpread(0.3);
+            territory.setEffect(greenGlow);
+
+            // REMOVER interactividad
+            removeTerritoryInteractivity(territory);
+
+            // Actualizar el texto de la etiqueta
+            updateTerritoryLabel(territory, "Conquistado");
+
+            System.out.println("✅ Territorio " + territoryNumber + " conquistado y guardado!");
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al conquistar territorio: " + e.getMessage());
+        }
+    }
+
+    private DropShadow createNormalGlowEffect() {
+        DropShadow normalGlow = new DropShadow();
+        normalGlow.setColor(Color.rgb(255, 0, 0, 0.8));
+        normalGlow.setRadius(15);
+        normalGlow.setSpread(0.2);
+        return normalGlow;
+    }
+
+    private DropShadow createRedGlowEffect() {
+        DropShadow redGlow = new DropShadow();
+        redGlow.setColor(Color.rgb(255, 0, 0, 0.9));
+        redGlow.setRadius(20);
+        redGlow.setSpread(0.3);
+        return redGlow;
+    }
+
+    private int calcularFuerzaTerritorio(int numeroTerritorio){
+        if(numeroTerritorio >= 0 && numeroTerritorio < gameMap.getTerritories().size()) {
+            Territory territory = gameMap.getTerritories().get(numeroTerritorio);
+            if (territory != null && territory.getPlayerOwner() != null) {
+                return territory.getPlayerOwner().calculateTotalDefence();
+            }
+        }
+        return 0;
     }
 
     private void setupInfoPanel() {
@@ -672,7 +785,7 @@ public class Map_Territories extends Pane {
         title.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;");
 
         Label instructions = new Label(
-                "⚔ Haz clic en un territorio enemigo para atacarlo\n" +
+                "⚔ Haz clic en un territorio enemigo vecino para atacarlo\n" +
                         " Tu territorio está marcado en verde\n" +
                         " Territorios enemigos en rojo\n"
         );
@@ -681,7 +794,6 @@ public class Map_Territories extends Pane {
 
         infoPanel.getChildren().addAll(title, instructions);
 
-        // Posicionar en parte superior central
         infoPanel.layoutXProperty().bind(widthProperty().divide(2).subtract(infoPanel.widthProperty().divide(2)));
         infoPanel.setLayoutY(20);
 
@@ -693,7 +805,6 @@ public class Map_Territories extends Pane {
         backButton.setPrefWidth(220);
         backButton.setPrefHeight(50);
 
-        // MISMO ESTILO que el juego principal
         backButton.setStyle(
                 "-fx-background-color: rgba(255, 255, 255, 0.95); " +
                         "-fx-background-radius: 8; " +
@@ -745,37 +856,169 @@ public class Map_Territories extends Pane {
             closeMap();
         });
 
-        // Posicionar en esquina inferior izquierda
         backButton.setLayoutX(20);
         backButton.layoutYProperty().bind(heightProperty().subtract(70));
 
         getChildren().add(backButton);
     }
 
-    private void createPlaceholderBackground() {
-        // Placeholder oscuro con patrón
-        javafx.scene.shape.Rectangle placeholder = new javafx.scene.shape.Rectangle();
-        placeholder.widthProperty().bind(widthProperty());
-        placeholder.heightProperty().bind(heightProperty());
-        placeholder.setFill(Color.rgb(40, 45, 70)); // Azul oscuro para mapa
+    private void showSimpleDefenseInfo(ImageView territory, int territoryNumber) {
+        if (defenseInfoPanel != null) {
+            getChildren().remove(defenseInfoPanel);
+        }
 
-        getChildren().add(placeholder);
+        int defense = calcularFuerzaTerritorio(territoryNumber);
 
-        // Texto
-        Label placeholderLabel = new Label("MAPA DE CONQUISTA");
-        placeholderLabel.setStyle(
-                "-fx-font-size: 36px; " +
-                        "-fx-font-weight: bold; " +
-                        "-fx-text-fill: rgba(255, 255, 255, 0.3);"
+        defenseInfoPanel = new VBox(3);
+        defenseInfoPanel.setAlignment(Pos.CENTER);
+        defenseInfoPanel.setPadding(new Insets(6, 10, 6, 10));
+
+        defenseInfoPanel.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.85); " +
+                        "-fx-background-radius: 6; " +
+                        "-fx-border-color: #e74c3c; " +
+                        "-fx-border-width: 1; " +
+                        "-fx-border-radius: 6; " +
+                        "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 5, 0.5, 0, 1);"
         );
-        placeholderLabel.layoutXProperty().bind(widthProperty().divide(2).subtract(180));
-        placeholderLabel.layoutYProperty().bind(heightProperty().divide(2).subtract(20));
 
-        getChildren().add(placeholderLabel);
+        Label defenseLabel = new Label("Defensa: " + defense);
+        defenseLabel.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #2c3e50;");
+
+        defenseInfoPanel.getChildren().add(defenseLabel);
+
+        double posX = territory.getX() + territory.getFitWidth()/2 - 35;
+        double posY = territory.getY() - 30;
+
+        if (posY < 10) {
+            posY = territory.getY() + territory.getFitHeight() + 5;
+        }
+
+        defenseInfoPanel.setLayoutX(posX);
+        defenseInfoPanel.setLayoutY(posY);
+
+        getChildren().add(defenseInfoPanel);
+
+        defenseInfoPanel.setOpacity(0);
+        FadeTransition fadeIn = new FadeTransition(Duration.millis(200), defenseInfoPanel);
+        fadeIn.setToValue(1.0);
+        fadeIn.play();
+    }
+
+    private void hideSimpleDefenseInfo() {
+        if (defenseInfoPanel != null) {
+            FadeTransition fadeOut = new FadeTransition(Duration.millis(150), defenseInfoPanel);
+            fadeOut.setToValue(0);
+            fadeOut.setOnFinished(e -> {
+                getChildren().remove(defenseInfoPanel);
+                defenseInfoPanel = null;
+            });
+            fadeOut.play();
+        }
+    }
+
+    private void showNotAdjacentAlert() {
+        javafx.application.Platform.runLater(() -> {
+            Stage alertStage = new Stage();
+            alertStage.initModality(Modality.APPLICATION_MODAL);
+            alertStage.initStyle(StageStyle.TRANSPARENT);
+            alertStage.setTitle("Territorio no adyacente");
+
+            VBox alertPanel = new VBox(15);
+            alertPanel.setPadding(new Insets(25, 30, 25, 30));
+            alertPanel.setAlignment(Pos.CENTER);
+
+            alertPanel.setStyle(
+                    "-fx-background-color: rgba(255, 255, 255, 0.50); " +
+                            "-fx-background-radius: 15; " +
+                            "-fx-border-color: #e74c3c; " +
+                            "-fx-border-width: 2; " +
+                            "-fx-border-radius: 15; " +
+                            "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0.5, 0, 2);"
+            );
+
+            Label warningIcon = new Label("🚫");
+            warningIcon.setStyle("-fx-font-size: 36px; -fx-padding: 0 0 5 0;");
+
+            VBox messageContainer = new VBox(5);
+            messageContainer.setAlignment(Pos.CENTER);
+
+            Label titleLabel = new Label("¡TERRITORIO NO ADYACENTE!");
+            titleLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #e74c3c;");
+
+            Label detailLabel = new Label(
+                    "Solo puedes atacar territorios que sean vecinos directos de los tuyos.\n\n" +
+                            "Debes conquistar territorio por territorio, avanzando desde tus fronteras."
+            );
+            detailLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #000000; -fx-text-alignment: center;");
+            detailLabel.setWrapText(true);
+
+            messageContainer.getChildren().addAll(titleLabel, detailLabel);
+
+            Button okButton = new Button("Entendido");
+            okButton.setPrefWidth(150);
+            okButton.setPrefHeight(38);
+            okButton.setStyle(
+                    "-fx-background-color: rgba(255, 255, 255, 0.5); " +
+                            "-fx-background-radius: 6; " +
+                            "-fx-border-color: #e74c3c; " +
+                            "-fx-border-width: 2; " +
+                            "-fx-border-radius: 6; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-text-fill: #2c3e50; " +
+                            "-fx-font-size: 12px; " +
+                            "-fx-font-weight: bold;"
+            );
+
+            okButton.setOnMouseEntered(e -> {
+                okButton.setStyle(
+                        "-fx-background-color: rgba(236, 240, 241, 0.5); " +
+                                "-fx-background-radius: 6; " +
+                                "-fx-border-color: #c0392b; " +
+                                "-fx-border-width: 2.5; " +
+                                "-fx-border-radius: 6; " +
+                                "-fx-cursor: hand; " +
+                                "-fx-text-fill: #2c3e50; " +
+                                "-fx-font-size: 12px; " +
+                                "-fx-font-weight: bold; " +
+                                "-fx-effect: dropshadow(gaussian, rgba(192, 57, 43, 0.3), 5, 0.5, 0, 1);"
+                );
+            });
+
+            okButton.setOnMouseExited(e -> {
+                okButton.setStyle(
+                        "-fx-background-color: rgba(255, 255, 255, 0.5); " +
+                                "-fx-background-radius: 6; " +
+                                "-fx-border-color: #e74c3c; " +
+                                "-fx-border-width: 2; " +
+                                "-fx-border-radius: 6; " +
+                                "-fx-cursor: hand; " +
+                                "-fx-text-fill: #2c3e50; " +
+                                "-fx-font-size: 12px; " +
+                                "-fx-font-weight: bold; " +
+                                "-fx-effect: null;"
+                );
+            });
+
+            okButton.setOnAction(e -> alertStage.close());
+
+            alertPanel.getChildren().addAll(warningIcon, messageContainer, okButton);
+
+            StackPane rootPane = new StackPane(alertPanel);
+            rootPane.setStyle("-fx-background-color: transparent;");
+            rootPane.setAlignment(Pos.CENTER);
+
+            Scene alertScene = new Scene(rootPane, 350, 250);
+            alertScene.setFill(Color.TRANSPARENT);
+
+            alertStage.initOwner(this.getScene().getWindow());
+            alertStage.setScene(alertScene);
+            alertStage.setResizable(false);
+            alertStage.showAndWait();
+        });
     }
 
     private void createPlaceholderTerritories() {
-        // Placeholders circulares proporcionales
         double territorySize = getWidth() * 0.1;
 
         javafx.scene.shape.Circle myTerritory = new javafx.scene.shape.Circle(territorySize/2);
@@ -793,24 +1036,16 @@ public class Map_Territories extends Pane {
         enemy2.setCenterX(getWidth() * 0.75);
         enemy2.setCenterY(getHeight() * 0.5);
 
-        javafx.scene.shape.Circle enemy3 = new javafx.scene.shape.Circle(territorySize/2 * 0.8);
-        enemy3.setFill(Color.rgb(255, 0, 0, 0.7));
-        enemy3.setCenterX(getWidth() * 0.78);
-        enemy3.setCenterY(getHeight() * 0.8);
-
-        getChildren().addAll(myTerritory, enemy1, enemy2, enemy3);
+        getChildren().addAll(myTerritory, enemy1, enemy2);
     }
 
     public void showMap() {
-        // Animación de entrada
         setOpacity(0);
         setScaleX(0.95);
         setScaleY(0.95);
 
-        // Asegurar que está al frente
         toFront();
 
-        // Animación
         FadeTransition fade = new FadeTransition(Duration.millis(500), this);
         fade.setToValue(1.0);
 
@@ -825,16 +1060,13 @@ public class Map_Territories extends Pane {
     }
 
     public void closeMap() {
-        // Animación de salida
         FadeTransition fade = new FadeTransition(Duration.millis(300), this);
         fade.setToValue(0);
 
         fade.setOnFinished(e -> {
-            // Remover de la pantalla
             if (gameApp != null && gameApp.getSceneContainer() != null) {
                 gameApp.getSceneContainer().getChildren().remove(this);
             }
-            // Notificar al GameApp
             if (gameApp != null) {
                 gameApp.onMapClosed();
             }
@@ -843,9 +1075,7 @@ public class Map_Territories extends Pane {
         fade.play();
     }
 
-    // Método para ajustar posiciones (puedes llamarlo desde fuera)
     public void setTerritoryPosition(String territoryType, double percentX, double percentY) {
-        // Ahora usa porcentajes en lugar de coordenadas absolutas
         switch (territoryType.toLowerCase()) {
             case "current":
                 if (currentTerritory != null) {
@@ -867,4 +1097,112 @@ public class Map_Territories extends Pane {
                 break;
         }
     }
+
+    /**
+     * Carga los territorios ya conquistados desde GameApp
+     */
+    private void loadConqueredTerritories() {
+        Set<Integer> conquered = gameApp.getConqueredTerritories();
+        System.out.println("📂 Cargando territorios conquistados: " + conquered);
+
+        for (int territoryNumber : conquered) {
+            // Buscar y marcar el territorio como conquistado
+            ImageView territory = findTerritoryByNumber(territoryNumber);
+            if (territory != null) {
+                markTerritoryAsConquered(territory, territoryNumber);
+            }
+        }
+    }
+
+    /**
+     * Busca un territorio por su número
+     */
+    private ImageView findTerritoryByNumber(int territoryNumber) {
+        switch (territoryNumber) {
+            case 0: // Tu territorio base
+                return currentTerritory;
+            case 1:
+                return enemyTerritory1;
+            case 2:
+                return enemyTerritory2;
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Marca un territorio como conquistado (sin interacción)
+     */
+    private void markTerritoryAsConquered(ImageView territory, int territoryNumber) {
+        try {
+            if (territory == null) return;
+
+            // Cambiar la imagen a territorio propio
+            Image conqueredImage = new Image("file:src/main/resources/images/territorioActual.png");
+            territory.setImage(conqueredImage);
+
+            // Cambiar el efecto a verde
+            DropShadow greenGlow = new DropShadow();
+            greenGlow.setColor(Color.rgb(0, 255, 0, 0.8));
+            greenGlow.setRadius(20);
+            greenGlow.setSpread(0.3);
+            territory.setEffect(greenGlow);
+
+            // REMOVER interactividad
+            removeTerritoryInteractivity(territory);
+
+            // Actualizar el texto de la etiqueta
+            updateTerritoryLabel(territory, "Conquistado");
+
+            System.out.println("🔄 Territorio " + territoryNumber + " cargado como conquistado");
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al marcar territorio como conquistado: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Remueve toda interactividad de un territorio
+     */
+    private void removeTerritoryInteractivity(ImageView territory) {
+        // Remover todos los event handlers
+        territory.setOnMouseClicked(null);
+        territory.setOnMouseEntered(null);
+        territory.setOnMouseExited(null);
+
+        // Deshabilitar cursor
+        territory.setCursor(javafx.scene.Cursor.DEFAULT);
+
+        // Hacer no interactivo
+        territory.setDisable(true);
+        territory.setMouseTransparent(false); // Permitir que pase el mouse (sin interacción)
+
+        // Remover cualquier efecto de hover que pueda quedar
+        territory.setScaleX(1.0);
+        territory.setScaleY(1.0);
+    }
+
+    /**
+     * Actualiza la etiqueta de un territorio
+     */
+    private void updateTerritoryLabel(ImageView territory, String newText) {
+        int labelIndex = getChildren().indexOf(territory) + 1;
+        if (labelIndex < getChildren().size()) {
+            Node node = getChildren().get(labelIndex);
+            if (node instanceof Label) {
+                Label label = (Label) node;
+                label.setText(newText);
+                // Cambiar estilo a verde
+                label.setStyle(
+                        "-fx-font-size: 14px; " +
+                                "-fx-font-weight: bold; " +
+                                "-fx-text-fill: white; " +
+                                "-fx-background-color: rgba(39, 174, 96, 0.7); " + // Verde
+                                "-fx-background-radius: 8; " +
+                                "-fx-padding: 5 12;"
+                );
+            }
+        }
+    }
+
 }

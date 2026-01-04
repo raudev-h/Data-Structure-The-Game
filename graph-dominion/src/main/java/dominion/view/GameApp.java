@@ -63,6 +63,10 @@ public class GameApp extends Application {
     private Timeline conquerButtonTimer;  // Timer para mostrar el botón
 
 
+    private static final Set<Integer> conqueredTerritories = new HashSet<>();
+
+
+
 
     // ==================== CARGA DE IMÁGENES (classpath primero, file: como fallback) ====================
 // ==================== Image loader (classpath only, simple) ====================
@@ -130,10 +134,9 @@ public class GameApp extends Application {
 
         // Configurar Conexion con Backend
         gameControler = new GameControler();
-        actualPlayer = gameControler.createPlayer("Player1", dominion.core.Color.BLUE);
-        gameMap = gameControler.createGameMap();
-        territory1 = new Territory();
-        actualPlayer.addTerritory(territory1);
+        actualPlayer = gameControler.getCurrentPlayer();
+        gameMap = gameControler.getGameMap();
+        territory1 = actualPlayer.getTerritories().getFirst();
 
         // 1. Obtener tamaño de pantalla
         Rectangle2D screen = Screen.getPrimary().getVisualBounds();
@@ -308,6 +311,18 @@ public class GameApp extends Application {
         conquestMap = null;
         updateResourceDisplay();
         updateAttackDisplay();
+    }
+
+    public GameMap getGameMap(){
+        return gameMap;
+    }
+
+    public GameControler getGameControler(){
+        return gameControler;
+    }
+
+    public Player getActualPlayer(){
+        return actualPlayer;
     }
 
     /**
@@ -8086,6 +8101,20 @@ public class GameApp extends Application {
             ProgressBarData data = barrasPorConstruccion.get(buildingId);
             return data != null ? data.progresoActual : 0.0;
         }
+    }
+
+    // Métodos para manejar territorios conquistados
+    public static void addConqueredTerritory(int territoryNumber) {
+        conqueredTerritories.add(territoryNumber);
+        System.out.println("✅ Territorio " + territoryNumber + " añadido a conquistados. Total: " + conqueredTerritories);
+    }
+
+    public static boolean isTerritoryConquered(int territoryNumber) {
+        return conqueredTerritories.contains(territoryNumber);
+    }
+
+    public static Set<Integer> getConqueredTerritories() {
+        return new HashSet<>(conqueredTerritories);
     }
 
     public static void main(String[] args) {

@@ -8,9 +8,9 @@ import dominion.model.units.UnitType;
 import java.util.*;
 
 public class MilitaryBase extends Building{
-    private final int KNIGHT_MAX_HEALTH = 100;
+    private final int KNIGHT_MAX_HEALTH = 10;
     private final int KNIGHT_MOVEMENT_SPEED = 20;
-    private final int KNIGHT_DEFENSE = 50;
+    private final int KNIGHT_DEFENSE = 5;
     private List<Knight> knights;
     private final Deque<UnitCreationOrder> trainingQueue;
 
@@ -70,8 +70,23 @@ public class MilitaryBase extends Building{
     }
     public boolean createKnight(){
         final Map<ResourceType,Integer> KNIGHT_COST = Map.of(ResourceType.GOLD,80);
-        final int KNIGHT_TRAINING_TIME = 5;
+        final int KNIGHT_TRAINING_TIME = 1;
         return startUnitCreation(UnitType.KNIGHT,KNIGHT_COST,KNIGHT_TRAINING_TIME);
+    }
+    public void addKnights(int amount){
+
+        for(int i = 0; i < amount; i++){
+            knights.add(new Knight(
+                    KNIGHT_MAX_HEALTH,
+                    KNIGHT_DEFENSE,
+                    KNIGHT_MOVEMENT_SPEED,
+                    UUID.randomUUID().toString(),
+                    this.territory.getTownHall(),
+                    this.territory
+            ));
+        }
+
+
     }
     public void processTrainingQueue(){
         UnitCreationOrder currentOrder = trainingQueue.peek();

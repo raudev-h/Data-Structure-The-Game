@@ -186,9 +186,13 @@ public class TownHall {
     }
     public boolean createMilitaryBase(){
         final Map<ResourceType,Integer> MILITARY_BASE_COST = Map.of(ResourceType.WOOD,100);
-        final int MILITARY_BASE_BUILD_TIME = 10;
+        final int MILITARY_BASE_BUILD_TIME = 1;
         return startBuildingCreation(BuildingType.MILITARY_BASE,MILITARY_BASE_COST,MILITARY_BASE_BUILD_TIME);
     }
+    public void addMilitaryBase(Territory territory){
+        ownedBuildings.add(new MilitaryBase("1",territory,10));
+    }
+
     public boolean canCreateMilitaryBase(){
         final Map<ResourceType,Integer> MILITARY_BASE_COST = Map.of(ResourceType.WOOD,100);
         final int MILITARY_BASE_BUILD_TIME = 50;
