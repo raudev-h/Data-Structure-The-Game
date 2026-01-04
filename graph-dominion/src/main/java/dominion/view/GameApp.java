@@ -622,19 +622,7 @@ public class GameApp extends Application {
         }
         return null;
     }
-    private class MiningTask {
-        ImageView miner;
-        ImageView mine;
-        Timeline collectionTimeline;
-        Timeline mineLifeTimeline;
-        int goldCollected = 0;
-        boolean isActive = true;
 
-        MiningTask(ImageView miner, ImageView mine) {
-            this.miner = miner;
-            this.mine = mine;
-        }
-    }
     private void sendSelectedMinersToMine(ImageView mine) {
         // Filtrar solo los mineros seleccionados
         List<ImageView> miners = new ArrayList<>();
@@ -716,30 +704,35 @@ public class GameApp extends Application {
             }
         }
 
-        // Crear nueva tarea
+        // Crear nueva tarea con el estado actual de la mina
         MiningTask task = new MiningTask(miner, mine);
 
-        // Timeline para recolectar oro cada 10 segundos (10 ciclos = 100 segundos)
+        // Timeline para recolectar oro - solo el número de ciclos restantes
         task.collectionTimeline = new Timeline(
                 new KeyFrame(Duration.seconds(10), e -> collectGoldFromMine(task))
         );
-        task.collectionTimeline.setCycleCount(10); // 10 ciclos = 100 segundos
+        task.collectionTimeline.setCycleCount(task.mineRemainingCycles); // Solo ciclos restantes
 
-        // Timeline para agotar la mina después de 100 segundos
+        // Timeline para agotar la mina basado en ciclos restantes
+        double remainingLife = task.mineRemainingCycles * 10; // 10 segundos por ciclo
         task.mineLifeTimeline = new Timeline(
-                new KeyFrame(Duration.seconds(100), e -> depleteMine(task))
+                new KeyFrame(Duration.seconds(remainingLife), e -> depleteMine(task))
         );
-        task.mineLifeTimeline.setCycleCount(1); // Solo una vez
+        task.mineLifeTimeline.setCycleCount(1);
 
         // Configurar lo que pasa cuando termina la recolección
         task.collectionTimeline.setOnFinished(e -> {
             System.out.println("✅ Minero completó la explotación de la mina " + mine.getId());
             task.isActive = false;
+
+            // Guardar estado final (0 ciclos)
+            mine.getProperties().put("remainingCycles", 0);
         });
 
         // Configurar lo que pasa cuando se agota la mina
         task.mineLifeTimeline.setOnFinished(e -> {
             System.out.println("⛏ Tiempo de vida de la mina " + mine.getId() + " terminado");
+            // El estado ya está actualizado en depleteMine
         });
 
         // Iniciar las timelines
@@ -750,7 +743,7 @@ public class GameApp extends Application {
         activeMiningTasks.put(miner, task);
 
         System.out.println("⛏ Minero comenzó a extraer oro de la mina " + mine.getId() +
-                " - 10 ciclos de 10 segundos = 100 segundos total");
+                " - " + task.mineRemainingCycles + " ciclos restantes de 10 segundos cada uno");
     }
 
     private void collectGoldFromMine(MiningTask task) {
@@ -762,10 +755,28 @@ public class GameApp extends Application {
             return;
         }
 
+        // Verificar si la mina ya está agotada
+        Integer remainingCycles = (Integer) task.mine.getProperties().get("remainingCycles");
+        if (remainingCycles != null && remainingCycles <= 0) {
+            System.out.println("⚠️ Mina ya está agotada");
+            task.isActive = false;
+            return;
+        }
+
         // Agregar oro al TownHall
         if (territory1 != null && territory1.getTownHall() != null) {
             territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, 50);
             task.goldCollected += 50;
+
+            // Actualizar estado del recurso
+            Integer totalCollected = (Integer) task.mine.getProperties().get("totalCollected");
+            if (totalCollected == null) totalCollected = 0;
+            task.mine.getProperties().put("totalCollected", totalCollected + 50);
+
+            // Actualizar ciclos restantes
+            int newRemainingCycles = task.mineRemainingCycles - 1;
+            task.mineRemainingCycles = newRemainingCycles;
+            task.mine.getProperties().put("remainingCycles", newRemainingCycles);
 
             // Actualizar display
             Platform.runLater(() -> updateResourceDisplay());
@@ -774,11 +785,12 @@ public class GameApp extends Application {
             showGoldCollectionEffect(task.miner, task.mine);
 
             System.out.println("💰 +50 Oro recolectado de la mina " + task.mine.getId() +
-                    " (Ciclo: " + (task.goldCollected / 50) + "/10, Total: " + task.goldCollected + ")");
+                    " (Ciclo: " + (10 - newRemainingCycles) + "/10, Restantes: " + newRemainingCycles + ")");
 
             // Si ya se recolectó todo el oro, detener
-            if (task.goldCollected >= 500) { // 10 ciclos * 50 = 500
+            if (newRemainingCycles <= 0) {
                 task.isActive = false;
+                System.out.println("✅ Mina completamente agotada");
             }
         }
     }
@@ -849,6 +861,9 @@ public class GameApp extends Application {
 
     private void depleteMine(MiningTask task) {
         if (task.mine != null && root.getChildren().contains(task.mine)) {
+            // Marcar como completamente agotada
+            task.mine.getProperties().put("remainingCycles", 0);
+
             // Detener todas las tareas relacionadas con esta mina
             stopAllTasksForMine(task.mine);
 
@@ -870,7 +885,7 @@ public class GameApp extends Application {
 
             fadeOut.setOnFinished(e -> {
                 root.getChildren().remove(task.mine);
-                System.out.println("⛏ Mina " + task.mine.getId() + " agotada y removida después de 100 segundos");
+                System.out.println("⛏ Mina " + task.mine.getId() + " agotada y removida");
             });
 
             fadeOut.play();
@@ -878,6 +893,16 @@ public class GameApp extends Application {
             // Remover la tarea del mapa
             activeMiningTasks.remove(task.miner);
         }
+    }
+
+    private boolean isMineDepleted(ImageView mine) {
+        Integer remainingCycles = (Integer) mine.getProperties().get("remainingCycles");
+        return remainingCycles != null && remainingCycles <= 0;
+    }
+
+    private boolean isTreeDepleted(ImageView tree) {
+        Integer remainingCycles = (Integer) tree.getProperties().get("remainingCycles");
+        return remainingCycles != null && remainingCycles <= 0;
     }
 
     private void stopAllTasksForMine(ImageView mine) {
@@ -903,6 +928,32 @@ public class GameApp extends Application {
 
     private final Map<ImageView, WoodcuttingTask> activeWoodcuttingTasks = new HashMap<>();
 
+    private class MiningTask {
+        ImageView miner;
+        ImageView mine;
+        Timeline collectionTimeline;
+        Timeline mineLifeTimeline;
+        int goldCollected = 0;
+        boolean isActive = true;
+        int mineRemainingCycles; // Ciclos restantes de la mina
+
+        MiningTask(ImageView miner, ImageView mine) {
+            this.miner = miner;
+            this.mine = mine;
+
+            // Obtener ciclos restantes del recurso o inicializar si es primera vez
+            Integer remaining = (Integer) mine.getProperties().get("remainingCycles");
+            if (remaining == null) {
+                // Primera vez - empezar con 10 ciclos completos
+                this.mineRemainingCycles = 10;
+                mine.getProperties().put("remainingCycles", 10);
+                mine.getProperties().put("totalCollected", 0);
+            } else {
+                this.mineRemainingCycles = remaining;
+            }
+        }
+    }
+
     private class WoodcuttingTask {
         ImageView woodcutter;
         ImageView tree;
@@ -910,10 +961,22 @@ public class GameApp extends Application {
         Timeline treeLifeTimeline;
         int woodCollected = 0;
         boolean isActive = true;
+        int treeRemainingCycles; // Ciclos restantes del árbol
 
         WoodcuttingTask(ImageView woodcutter, ImageView tree) {
             this.woodcutter = woodcutter;
             this.tree = tree;
+
+            // Obtener ciclos restantes del recurso o inicializar si es primera vez
+            Integer remaining = (Integer) tree.getProperties().get("remainingCycles");
+            if (remaining == null) {
+                // Primera vez - empezar con 5 ciclos completos
+                this.treeRemainingCycles = 5;
+                tree.getProperties().put("remainingCycles", 5);
+                tree.getProperties().put("totalCollected", 0);
+            } else {
+                this.treeRemainingCycles = remaining;
+            }
         }
     }
 
@@ -1238,14 +1301,19 @@ public class GameApp extends Application {
 
                 task.isActive = false;
 
+                // Guardar el estado actual ANTES de detener
+                if (task.mine != null) {
+                    // El estado ya está actualizado en las propiedades del recurso
+                    System.out.println("💾 Guardando estado de mina: " +
+                            task.mineRemainingCycles + " ciclos restantes");
+                }
+
                 // Detener timelines
                 if (task.collectionTimeline != null) {
                     task.collectionTimeline.stop();
-                    System.out.println("   Timeline de colección detenida");
                 }
                 if (task.mineLifeTimeline != null) {
                     task.mineLifeTimeline.stop();
-                    System.out.println("   Timeline de vida de mina detenida");
                 }
 
                 // Eliminar de la lista
