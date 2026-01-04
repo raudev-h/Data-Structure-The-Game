@@ -993,18 +993,26 @@ public class GameApp extends Application {
             }
         }
 
-        // Crear nueva tarea
+        // Verificar si el árbol ya está agotado
+        if (isTreeDepleted(tree)) {
+            System.out.println("⚠️ Este árbol ya está talado completamente");
+            showResourceDepletedAlert("árbol");
+            return;
+        }
+
+        // Crear nueva tarea con el estado actual del árbol
         WoodcuttingTask task = new WoodcuttingTask(woodcutter, tree);
 
-        // Timeline para recolectar madera cada 10 segundos (5 ciclos = 50 segundos)
+        // Timeline para recolectar madera - solo el número de ciclos restantes
         task.collectionTimeline = new Timeline(
                 new KeyFrame(Duration.seconds(10), e -> collectWoodFromTree(task))
         );
-        task.collectionTimeline.setCycleCount(5); // 5 ciclos = 50 segundos
+        task.collectionTimeline.setCycleCount(task.treeRemainingCycles); // Solo ciclos restantes
 
-        // Timeline para eliminar el árbol después de 50 segundos
+        // Timeline para eliminar el árbol basado en ciclos restantes
+        double remainingLife = task.treeRemainingCycles * 10; // 10 segundos por ciclo
         task.treeLifeTimeline = new Timeline(
-                new KeyFrame(Duration.seconds(50), e -> removeTree(task))
+                new KeyFrame(Duration.seconds(remainingLife), e -> removeTree(task))
         );
         task.treeLifeTimeline.setCycleCount(1); // Solo una vez
 
@@ -1013,11 +1021,12 @@ public class GameApp extends Application {
             System.out.println("✅ Leñador completó la tala del árbol " + tree.getId());
             task.isActive = false;
 
+            // Guardar estado final (0 ciclos)
+            tree.getProperties().put("remainingCycles", 0);
         });
 
         // Configurar lo que pasa cuando se elimina el árbol
         task.treeLifeTimeline.setOnFinished(e -> {
-            // Esto ya está manejado en removeTree, pero lo dejamos por si acaso
             System.out.println("🌳 Tiempo de vida del árbol " + tree.getId() + " terminado");
         });
 
@@ -1029,11 +1038,126 @@ public class GameApp extends Application {
         activeWoodcuttingTasks.put(woodcutter, task);
 
         System.out.println("🪓 Leñador comenzó a talar árbol " + tree.getId() +
-                " - 5 ciclos de 10 segundos = 50 segundos total");
+                " - " + task.treeRemainingCycles + " ciclos restantes de 10 segundos cada uno");
+    }
+
+
+    // Método para mostrar alerta de recurso agotado
+    private void showResourceDepletedAlert(String resourceType) {
+        Platform.runLater(() -> {
+            // Crear popup de alerta
+            Popup alertPopup = new Popup();
+            alertPopup.setAutoHide(true);
+            alertPopup.setHideOnEscape(true);
+
+            VBox alertPanel = new VBox(15);
+            alertPanel.setAlignment(Pos.CENTER);
+            alertPanel.setPadding(new Insets(25, 30, 25, 30));
+            alertPanel.setStyle(
+                    "-fx-background-color: rgba(255, 255, 255, 0.95); " +
+                            "-fx-background-radius: 15; " +
+                            "-fx-border-color: #e74c3c; " +
+                            "-fx-border-width: 2; " +
+                            "-fx-border-radius: 15; " +
+                            "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 15, 0.5, 0, 5);"
+            );
+
+            Label warningIcon = new Label(resourceType.equals("árbol") ? "🌳" : "⛏");
+            warningIcon.setStyle("-fx-font-size: 48px; -fx-padding: 0 0 10 0;");
+
+            Label title = new Label("¡" + resourceType.toUpperCase() + " AGOTADO!");
+            title.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #e74c3c;");
+
+            Label message = new Label("Este " + resourceType + " ha sido completamente\nexplotado y ya no se puede utilizar.");
+            message.setStyle("-fx-font-size: 14px; -fx-text-fill: #7f8c8d; -fx-text-alignment: center;");
+            message.setWrapText(true);
+
+            Button okButton = new Button("Entendido");
+            okButton.setPrefWidth(120);
+            okButton.setPrefHeight(40);
+            okButton.setStyle(
+                    "-fx-background-color: #e74c3c; " +
+                            "-fx-background-radius: 6; " +
+                            "-fx-text-fill: white; " +
+                            "-fx-font-weight: bold; " +
+                            "-fx-font-size: 14px; " +
+                            "-fx-cursor: hand;"
+            );
+
+            okButton.setOnAction(e -> alertPopup.hide());
+
+            alertPanel.getChildren().addAll(warningIcon, title, message, okButton);
+
+            StackPane container = new StackPane(alertPanel);
+            alertPopup.getContent().add(container);
+
+            // Posicionar en el centro
+            double x = (windowWidth - alertPanel.getPrefWidth()) / 2;
+            double y = windowHeight * 0.3;
+            alertPopup.show(root.getScene().getWindow(), x, y);
+        });
+    }
+
+    // Método para programar regeneración de árbol (opcional)
+    private void scheduleTreeRegeneration(String treeId, double x, double y, double size, int regenerationTimeSeconds) {
+        System.out.println("🌱 Programando regeneración de árbol en " + regenerationTimeSeconds + " segundos");
+
+        Timeline regenerationTimeline = new Timeline(
+                new KeyFrame(Duration.seconds(regenerationTimeSeconds), e -> {
+                    System.out.println("✨ Regenerando árbol: " + treeId);
+
+                    try {
+                        Image treeImage = loadImage("Arbol.png");
+                        ImageView newTree = new ImageView(treeImage);
+                        newTree.setFitWidth(size);
+                        newTree.setFitHeight(size);
+                        newTree.setPreserveRatio(true);
+                        newTree.setX(x);
+                        newTree.setY(y);
+                        newTree.setId(treeId + "_regenerated");
+
+                        // Resetear propiedades
+                        newTree.getProperties().put("remainingCycles", 5);
+                        newTree.getProperties().put("totalCollected", 0);
+
+                        // Añadir a la escena
+                        root.getChildren().add(newTree);
+
+                        // Hacer interactivo
+                        makeTreeInteractive(newTree, "Árbol regenerado");
+
+                        // Animación de aparición
+                        FadeTransition fadeIn = new FadeTransition(Duration.seconds(2), newTree);
+                        fadeIn.setFromValue(0.0);
+                        fadeIn.setToValue(1.0);
+                        fadeIn.play();
+
+                        System.out.println("✅ Árbol regenerado exitosamente");
+
+                    } catch (Exception ex) {
+                        System.err.println("❌ Error al regenerar árbol: " + ex.getMessage());
+                    }
+                })
+        );
+        regenerationTimeline.play();
     }
 
     private void collectWoodFromTree(WoodcuttingTask task) {
         if (!task.isActive) return;
+
+        // Verificar que el árbol aún exista
+        if (!root.getChildren().contains(task.tree)) {
+            task.isActive = false;
+            return;
+        }
+
+        // Verificar si el árbol ya está agotado
+        Integer remainingCycles = (Integer) task.tree.getProperties().get("remainingCycles");
+        if (remainingCycles != null && remainingCycles <= 0) {
+            System.out.println("⚠️ Árbol ya está talado");
+            task.isActive = false;
+            return;
+        }
 
         // Agregar madera al TownHall
         if (territory1 != null && territory1.getTownHall() != null) {
@@ -1041,11 +1165,30 @@ public class GameApp extends Application {
 
             task.woodCollected += 25;
 
+            // Actualizar estado del recurso
+            Integer totalCollected = (Integer) task.tree.getProperties().get("totalCollected");
+            if (totalCollected == null) totalCollected = 0;
+            task.tree.getProperties().put("totalCollected", totalCollected + 25);
+
+            // Actualizar ciclos restantes
+            int newRemainingCycles = task.treeRemainingCycles - 1;
+            task.treeRemainingCycles = newRemainingCycles;
+            task.tree.getProperties().put("remainingCycles", newRemainingCycles);
+
             // Actualizar display
             Platform.runLater(() -> updateResourceDisplay());
 
+            // Mostrar efecto visual
+            showWoodCollectionEffect(task.woodcutter, task.tree);
+
             System.out.println("🪵 +25 Madera recolectada del árbol " + task.tree.getId() +
-                    " (Ciclo: " + (task.woodCollected / 25) + "/5, Total: " + task.woodCollected + ")");
+                    " (Ciclo: " + (5 - newRemainingCycles) + "/5, Restantes: " + newRemainingCycles + ")");
+
+            // Si ya se recolectó toda la madera, detener
+            if (newRemainingCycles <= 0) {
+                task.isActive = false;
+                System.out.println("✅ Árbol completamente talado");
+            }
         }
     }
 
@@ -1115,6 +1258,9 @@ public class GameApp extends Application {
 
     private void removeTree(WoodcuttingTask task) {
         if (task.tree != null && root.getChildren().contains(task.tree)) {
+            // Marcar como completamente agotado
+            task.tree.getProperties().put("remainingCycles", 0);
+
             // Detener todas las tareas relacionadas con este árbol
             stopAllTasksForTree(task.tree);
 
@@ -1136,7 +1282,12 @@ public class GameApp extends Application {
 
             fadeOut.setOnFinished(e -> {
                 root.getChildren().remove(task.tree);
-                System.out.println("🌳 Árbol " + task.tree.getId() + " talado y removido después de 50 segundos");
+                System.out.println("🌳 Árbol " + task.tree.getId() + " talado y removido");
+
+
+                // Opcional: Programar regeneración del árbol
+                // scheduleTreeRegeneration(task.tree.getId(), task.tree.getX(), task.tree.getY(),
+                //                          task.tree.getFitWidth(), 300); // 5 minutos
             });
 
             fadeOut.play();
@@ -1162,21 +1313,6 @@ public class GameApp extends Application {
         for (ImageView woodcutter : toRemove) {
             activeWoodcuttingTasks.remove(woodcutter);
         }
-    }
-
-    private void createTreeStump(double x, double y, double size) {
-        // Crear un tocón (opcional, visualmente)
-        Circle stump = new Circle(size / 4, Color.rgb(101, 67, 33));
-        stump.setCenterX(x + size / 2);
-        stump.setCenterY(y + size / 2);
-
-        root.getChildren().add(stump);
-
-        // El tocón puede ser clickeable para eliminarlo más tarde
-        stump.setOnMouseClicked(e -> {
-            root.getChildren().remove(stump);
-            System.out.println("🪵 Tocón removido");
-        });
     }
 
     private void animateMove(ImageView unit, double targetX, double targetY) {
@@ -1234,6 +1370,14 @@ public class GameApp extends Application {
 
                 task.isActive = false;
 
+                // Guardar el estado actual ANTES de detener
+                if (task.tree != null) {
+                    // El estado ya está actualizado en las propiedades del recurso
+                    System.out.println("💾 Guardando estado del árbol: " +
+                            task.treeRemainingCycles + " ciclos restantes");
+                }
+
+                // Detener timelines
                 if (task.collectionTimeline != null) {
                     task.collectionTimeline.stop();
                 }
@@ -1241,9 +1385,10 @@ public class GameApp extends Application {
                     task.treeLifeTimeline.stop();
                 }
 
+                // Eliminar de la lista
                 activeWoodcuttingTasks.remove(woodcutter);
 
-                // Mostrar efecto de cancelación
+                // Mostrar mensaje de cancelación
                 showWoodcuttingCancelledEffect(woodcutter);
             }
         }
