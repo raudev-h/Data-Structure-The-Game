@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.effect.DropShadow?>
+<?import javafx.geometry.Insets?> <StackPane xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
+                                             fx:controller="com.juego.conquista.principalMenuController">
+
+    <ImageView fx:id="backgroundImageView" pickOnBounds="true" preserveRatio="false">
+        <image>
+            <Image url="@fondo.png" />
+        </image>
+    </ImageView>
+
+    <VBox alignment="CENTER" spacing="50.0" style="-fx-background-color: transparent;">
+        <padding>
+            <Insets top="-100.0" /> </padding>
+
+        <Label text="Territory Ascendancy" textAlignment="CENTER">
+            <style>
+                -fx-font-family: "Impact";
+                -fx-font-size: 65px;
+                -fx-font-weight: bold;
+                -fx-text-fill: linear-gradient(to bottom, #FFD700, #FFA500);
+            </style>
+            <effect>
+                <DropShadow color="BLACK" radius="20.0" spread="0.7" offsetX="5" offsetY="5" />
+            </effect>
+        </Label>
+
+        <Button text="JUGAR" onAction="#playButtonAction"
+                style="-fx-background-color: #2ecc71; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 18px;"
+                prefWidth="250.0" prefHeight="50.0" />
+
+        <Button text="INFORMACIÓN" onAction="#informationButtonAction"
+                style="-fx-background-color: #ffffff; -fx-text-fill: black; -fx-font-weight: bold; -fx-font-size: 18px;"
+                prefWidth="250.0" prefHeight="50.0" />
+
+        <Button text="SALIR" onAction="#exitButtonAction"
+                style="-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 18px;"
+                prefWidth="250.0" prefHeight="50.0" />
+
+    </VBox>
+</StackPane>
