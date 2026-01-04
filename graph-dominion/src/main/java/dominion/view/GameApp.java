@@ -2792,7 +2792,7 @@ public class GameApp extends Application {
                         // Obtener posición guardada o usar una por defecto
                         double x, y;
                         if (buildingPositions.containsKey(buildingId)) {
-                            Position pos = buildingPositions.get(buildingId);
+                            dominion.view.GameApp.Position pos = buildingPositions.get(buildingId);
                             x = pos.x;
                             y = pos.y;
                         } else {
@@ -2882,6 +2882,26 @@ public class GameApp extends Application {
             System.out.println("🗑️ Barra de progreso eliminada para: " + buildingId);
         }
     }
+    private double calculateConstructionProgress(ConstructionOrder order) {
+        if (order == null) return 0.0;
+
+        try {
+            String buildingType = order.getType().toString();
+            String displayType = getBuildingTypeForImage(buildingType);
+            int totalTime = getTotalBuildTimeForType(displayType);
+            int remainingTime = order.getRemainingTime();
+
+            if (totalTime <= 0) return 0.0;
+
+            int elapsedTime = totalTime - remainingTime;
+            double progress = Math.min(1.0, Math.max(0.0, (double) elapsedTime / totalTime));
+
+            return progress;
+        } catch (Exception e) {
+            System.err.println("❌ Error calculando progreso: " + e.getMessage());
+            return 0.0;
+        }
+    }
     private double calculateConstructionProgress(ConstructionOrder order, int totalTime) {
         if (order == null || totalTime <= 0) return 0.0;
 
@@ -2912,17 +2932,15 @@ public class GameApp extends Application {
             return 0.0;
         }
     }
-    
-    // Método auxiliar para obtener tiempo restante de la orden
-    private int getRemainingTimeFromOrder(String order) {
-        try {
-            if (order.getClass().getMethod("getRemainingTime") != null) {
-                return (int) order.getClass().getMethod("getRemainingTime").invoke(order);
-            } else if (order.getClass().getMethod("getTimeLeft") != null) {
-                return (int) order.getClass().getMethod("getTimeLeft").invoke(order);
+
+    private int getRemainingTimeFromOrder(String buildingId) {
+        if (territory1 != null && territory1.getTownHall() != null) {
+            Deque<ConstructionOrder> queue = territory1.getTownHall().getConstructionQueue();
+            for (ConstructionOrder order : queue) {
+                if (order.getBuildingId().equals(buildingId)) {
+                    return order.getRemainingTime();
+                }
             }
-        } catch (Exception e) {
-            System.err.println("❌ Error al obtener tiempo restante: " + e.getMessage());
         }
         return 0;
     }
@@ -3143,6 +3161,22 @@ public class GameApp extends Application {
         } catch (Exception e) {
             System.err.println("❌ Error al mostrar construcción en progreso: " + e.getMessage());
         }
+    }
+
+    private ConstructionOrder getConstructionOrderById(String constructionId) {
+        if (territory1 == null || territory1.getTownHall() == null) {
+            return null;
+        }
+
+        Deque<ConstructionOrder> constructionQueue = territory1.getTownHall().getConstructionQueue();
+
+        for (ConstructionOrder order : constructionQueue) {
+            if (order.getBuildingId().equals(constructionId)) {
+                return order;
+            }
+        }
+
+        return null;
     }
 
     private void removeWaitingText(String constructionId) {
@@ -4272,14 +4306,15 @@ public class GameApp extends Application {
         this.currentBuildingType = buildingType;
         boolean construir = true;
 
-        if (currentBuildingType.equalsIgnoreCase("Casa"))
+        if(currentBuildingType.equalsIgnoreCase("Casa"))
             construir = territory1.getTownHall().canCreateHouse();
-        else if (currentBuildingType.equalsIgnoreCase("Cuartel"))
+        else if(currentBuildingType.equalsIgnoreCase("Cuartel"))
             construir = territory1.getTownHall().canCreateMilitaryBase();
 
-        if (construir) {
+        if(construir){
             try {
-                Image buildingImage = loadImage(buildingType + ".png");
+                String imagePath = "file:src/main/resources/images/" + buildingType + ".png";
+                Image buildingImage = new Image(imagePath);
 
                 buildingGhost.setImage(buildingImage);
                 if (buildingType.equalsIgnoreCase("Cuartel")) {
@@ -4450,69 +4485,84 @@ public class GameApp extends Application {
         boolean creado = false;
         String buildingTypeForBackend = "";
 
-        if(currentBuildingType.equalsIgnoreCase("Casa")){
+        // Determinar el tipo de construcción para el backend
+        if (currentBuildingType.equalsIgnoreCase("Casa")) {
+            buildingTypeForBackend = "HOUSE";
             creado = territory1.getTownHall().createHouse();
-        } else if(currentBuildingType.equalsIgnoreCase("Cuartel")){
+        } else if (currentBuildingType.equalsIgnoreCase("Cuartel")) {
+            buildingTypeForBackend = "MILITARY_BASE";
             creado = territory1.getTownHall().createMilitaryBase();
         }
 
-        if (!creado) {
-            System.out.println("❌ Error: No se pudo crear el edificio en el backend");
-            cancelBuildingMode();
-            return;
+        // Si se crea una construcción exitosamente, asegurar que el Timeline esté corriendo
+        if (creado) {
+            restartConstructionUpdateLoopIfNeeded();
+            System.out.println("▶️ Nueva construcción iniciada - Reactivando sincronización");
         }
 
-        // ACTUALIZAR RECURSOS DESPUÉS DE CONSTRUIR
-        updateResourceDisplay();
+        // Obtener TODAS las órdenes de construcción
+        Deque<ConstructionOrder> queue = territory1.getTownHall().getConstructionQueue();
+        System.out.println("📊 Total órdenes en cola después de crear: " + queue.size());
 
-        try {
-            String imagePath = "file:src/main/resources/images/" + currentBuildingType + ".png";
-            Image buildingImage = new Image(imagePath);
+        ConstructionOrder newOrder = null;
 
-            ImageView buildingView = new ImageView(buildingImage);
-            buildingView.setFitWidth(buildingWidth);
-            buildingView.setFitHeight(buildingHeight);
-            buildingView.setPreserveRatio(true);
-            buildingView.setX(posX);
-            buildingView.setY(posY);
-
-            // Marcar como cuartel si es el caso
-            if (currentBuildingType.equalsIgnoreCase("Cuartel")) {
-                buildingView.setId("Cuartel_" + System.currentTimeMillis());
-                System.out.println("⚔️ Cuartel creado y marcado con ID: " + buildingView.getId());
+        // Buscar la última orden (más reciente)
+        if (!queue.isEmpty()) {
+            // Usar iterator para encontrar la última
+            Iterator<ConstructionOrder> iterator = queue.iterator();
+            while (iterator.hasNext()) {
+                newOrder = iterator.next();
             }
 
-            DropShadow shadow = new DropShadow();
-            shadow.setColor(Color.rgb(0, 0, 0, 0.5));
-            shadow.setRadius(10);
-            shadow.setSpread(0.1);
-            buildingView.setEffect(shadow);
+            if (newOrder != null) {
+                String buildingId = newOrder.getBuildingId();
 
-            FadeTransition fade = new FadeTransition(Duration.millis(500), buildingView);
-            fade.setFromValue(0.0);
-            fade.setToValue(1.0);
+                // Guardar posición
+                buildingPositions.put(buildingId, new dominion.view.GameApp.Position(posX, posY));
 
-            ScaleTransition scale = new ScaleTransition(Duration.millis(500), buildingView);
-            scale.setFromX(0.5);
-            scale.setFromY(0.5);
-            scale.setToX(1.0);
-            scale.setToY(1.0);
+                System.out.println("📍 Posición guardada para construcción ID: " + buildingId);
 
-            javafx.animation.ParallelTransition parallel =
-                    new javafx.animation.ParallelTransition(fade, scale);
-            parallel.play();
+                // Obtener tiempo total para el tipo de edificio
+                int totalTime = getTotalBuildTimeForType(currentBuildingType);
 
-            root.getChildren().add(buildingView);
-            placedBuildings.add(buildingView);
-            makeBuildingInteractive(buildingView, currentBuildingType);
+                // Verificar si esta construcción es la activa (primera en la cola)
+                ConstructionOrder activeConstruction = queue.peekFirst();
+                boolean esActiva = activeConstruction != null && activeConstruction.getBuildingId().equals(buildingId);
 
-            System.out.println("✅ " + currentBuildingType + " construido en: (" + (int)posX + ", " + (int)posY + ")");
-            cancelBuildingMode();
+                if (esActiva) {
+                    // Mostrar como construcción activa con barra
+                    showConstructionInProgress(posX, posY, buildingWidth, buildingHeight,
+                            currentBuildingType, buildingId, totalTime);
+                } else {
+                    // Mostrar como construcción en espera
+                    showWaitingConstruction(posX, posY, buildingWidth, buildingHeight,
+                            currentBuildingType, buildingId);
+                }
 
-        } catch (Exception e) {
-            System.err.println("❌ Error al colocar edificio visualmente: " + e.getMessage());
-            cancelBuildingMode();
+                buildingTypesUnderConstruction.put(buildingId, currentBuildingType);
+
+                System.out.println("🚧 Construcción " + (esActiva ? "ACTIVA" : "EN ESPERA") +
+                        " iniciada: " + currentBuildingType +
+                        " - ID: " + buildingId +
+                        " - Posición: (" + (int)posX + ", " + (int)posY + ")");
+            }
+        } else {
+            // Si no hay órdenes, usar temporal
+            String tempId = "temp_" + System.currentTimeMillis();
+            buildingPositions.put(tempId, new dominion.view.GameApp.Position(posX, posY));
+            buildingTypesUnderConstruction.put(tempId, currentBuildingType);
+
+            // Mostrar como construcción en espera
+            showWaitingConstruction(posX, posY, buildingWidth, buildingHeight,
+                    currentBuildingType, tempId);
+
+            System.out.println("⚠️ Construcción temporal iniciada: " + currentBuildingType);
         }
+
+        // ACTUALIZAR RECURSOS
+        updateResourceDisplay();
+
+        cancelBuildingMode();
     }
 
     // ==================== UNIDADES ====================
