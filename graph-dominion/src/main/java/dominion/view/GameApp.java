@@ -55,6 +55,15 @@ public class GameApp extends Application {
     private final List<ImageView> selectedUnitViews = new ArrayList<>();
 
 
+    // ==================== BOTÓN DE CONQUISTA ====================
+    // ==================== BOTÓN DE CONQUISTA ====================
+    // ==================== BOTÓN DE CONQUISTA ====================
+    private VBox conquerButtonPanel;  // Panel del botón de conquista
+    private boolean conquerButtonShown = false;
+    private Timeline conquerButtonTimer;  // Timer para mostrar el botón
+
+
+
     // ==================== CARGA DE IMÁGENES (classpath primero, file: como fallback) ====================
 // ==================== Image loader (classpath only, simple) ====================
     private Image loadImage(String imageName) {
@@ -111,8 +120,14 @@ public class GameApp extends Application {
     private BarraProgresoAnimadaManager barraProgresoManager = new BarraProgresoAnimadaManager();
 
 
+    // ==================== GESTIÓN DE ESCENAS ====================
+    private StackPane sceneContainer; // Contenedor principal para cambiar escenas
+    private Scene mainScene; // La escena principal del juego
+    private Map_Territories conquestMap; // Referencia al mapa de conquista
+
     @Override
     public void start(Stage stage) {
+
         // Configurar Conexion con Backend
         gameControler = new GameControler();
         actualPlayer = gameControler.createPlayer("Player1", dominion.core.Color.BLUE);
@@ -125,17 +140,20 @@ public class GameApp extends Application {
         windowWidth = Math.min(screen.getWidth() * 0.9, 1600);
         windowHeight = Math.min(screen.getHeight() * 0.9, 900);
 
-        // 2. Crear contenedor principal
+        // 2. Crear contenedor principal CON ESCENA
         root = new Pane();
         root.setPrefSize(windowWidth, windowHeight);
+
+        // Crear contenedor de escenas para superposiciones
+        sceneContainer = new StackPane();
+        sceneContainer.setPrefSize(windowWidth, windowHeight);
+        sceneContainer.getChildren().add(root);
 
         // 3. Añadir mapa como Background
         setMapBackground(root, windowWidth, windowHeight);
 
         // 4. Configurar el sistema de pausa (ANTES de otros elementos)
         setupPauseSystem();
-
-        startConstructionUpdateLoop();
 
         // 5. Añadir TownHall INTERACTIVO
         addInteractiveTownHall();
@@ -147,16 +165,16 @@ public class GameApp extends Application {
         root.getChildren().add(buildingGhost);
 
         // 7. Configurar ventana
-        Scene scene = new Scene(root, windowWidth, windowHeight);
-        // ==================== INPUT (SELECCIÓN + MOVER UNIDADES) ====================
+        mainScene = new Scene(sceneContainer, windowWidth, windowHeight);
 
-        setupUnitSelectionAndMovement(scene);
-        setupBuildingListeners(scene);
+        // ==================== INPUT (SELECCIÓN + MOVER UNIDADES) ====================
+        setupUnitSelectionAndMovement(mainScene);
+        setupBuildingListeners(mainScene);
 
         // 8. Añadir árboles
         addOrganicForest();
 
-        // NUEVO: 8.1 Añadir minas distribuidas
+        // 8.1 Añadir minas distribuidas
         addMinesToMap();
 
         // 9. Crear unidades
@@ -170,7 +188,7 @@ public class GameApp extends Application {
 
         // 11. Configurar el stage
         stage.setTitle("Dominion");
-        stage.setScene(scene);
+        stage.setScene(mainScene);
         centerStage(stage, windowWidth, windowHeight);
         stage.show();
 
@@ -192,17 +210,506 @@ public class GameApp extends Application {
         Platform.runLater(() -> {
             positionTopPanel();
             updateResourceDisplay();
+
             // Iniciar el timer automáticamente
             if (gameTimer != null) {
                 gameTimer.startTimer();
             }
+
+            // Iniciar ciclo de actualización de construcciones
+            startConstructionUpdateLoop();
+
+            // Configurar timer para mostrar botón de conquista después de 10 segundos
+            setupConquerButtonTimer();
         });
 
+        // 14. LISTENERS PARA REDIMENSIONAMIENTO
+        // Listener para cuando cambia el tamaño de la ventana
+        stage.widthProperty().addListener((obs, oldVal, newVal) -> {
+            windowWidth = newVal.doubleValue();
+            positionTopPanel();
+            positionConquerButton();
+
+            // Actualizar tamaño del mapa de conquista si está abierto
+            if (conquestMap != null) {
+                conquestMap.setPrefSize(windowWidth, windowHeight);
+                conquestMap.resize(windowWidth, windowHeight);
+            }
+
+            // Actualizar tamaño del contenedor de escenas
+            sceneContainer.setPrefSize(windowWidth, windowHeight);
+        });
+
+        stage.heightProperty().addListener((obs, oldVal, newVal) -> {
+            windowHeight = newVal.doubleValue();
+            positionTopPanel();
+            positionConquerButton();
+
+            // Actualizar tamaño del mapa de conquista si está abierto
+            if (conquestMap != null) {
+                conquestMap.setPrefSize(windowWidth, windowHeight);
+                conquestMap.resize(windowWidth, windowHeight);
+            }
+
+            // Actualizar tamaño del contenedor de escenas
+            sceneContainer.setPrefSize(windowWidth, windowHeight);
+        });
+
+        // Listener para reposicionar elementos cuando cambie el tamaño de la escena
+        mainScene.widthProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal.doubleValue() > 0) {
+                windowWidth = newVal.doubleValue();
+                positionTopPanel();
+                positionConquerButton();
+            }
+        });
+
+        mainScene.heightProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal.doubleValue() > 0) {
+                windowHeight = newVal.doubleValue();
+                positionTopPanel();
+                positionConquerButton();
+            }
+        });
+
+        // 15. Canvas para dibujo (si es necesario)
         Canvas canvas = new Canvas(800, 600);
-        Pane root = new Pane(canvas);
-        stage.setScene(scene);
-        stage.show();
+        Pane canvasPane = new Pane(canvas);
+        // Nota: No añadimos canvasPane al root para evitar duplicados
+
+        System.out.println("✅ Juego iniciado correctamente");
+        System.out.println("📏 Tamaño de ventana: " + (int)windowWidth + "x" + (int)windowHeight);
     }
+    /**
+     * Abre el mapa de conquista de territorios (superpuesto)
+     */
+    private void openConquestMap() {
+        try {
+            // Crear el mapa con el tamaño actual
+            conquestMap = new Map_Territories(this, windowWidth, windowHeight);
+
+            // Añadir al contenedor de escenas
+            if (sceneContainer != null) {
+                sceneContainer.getChildren().add(conquestMap);
+                conquestMap.showMap();
+                System.out.println("🗺️ Mapa de conquista abierto (superpuesto)");
+            }
+        } catch (Exception e) {
+            System.err.println("❌ Error al abrir el mapa de conquista: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Método llamado cuando se cierra el mapa
+     */
+    public void onMapClosed() {
+        System.out.println("🗺️ Mapa de conquista cerrado - Volviendo al territorio principal");
+        conquestMap = null;
+        updateResourceDisplay();
+        updateAttackDisplay();
+    }
+
+    /**
+     * Getter para el contenedor de escenas
+     */
+    public StackPane getSceneContainer() {
+        return sceneContainer;
+    }
+
+    /**
+     * Configura el timer para mostrar el botón de conquista después de 10 segundos
+     */
+    private void setupConquerButtonTimer() {
+        conquerButtonTimer = new Timeline(
+                new KeyFrame(Duration.seconds(10), e -> showConquerButton())
+        );
+        conquerButtonTimer.setCycleCount(1); // Solo una vez
+        conquerButtonTimer.play();
+
+        System.out.println("⏳ Timer de conquista iniciado - Aparecerá en 10 segundos");
+    }
+    /**
+     * Posiciona el botón de conquista en su lugar
+     */
+    private void positionConquerButton() {
+        if (conquerButtonPanel == null) return;
+
+        double panelWidth = 200;
+        double panelHeight = 70;
+
+        // Posición personalizada (ajusta estos valores)
+        double x = windowWidth * 0.8 - panelWidth / 2;
+        double y = windowHeight * 0.1;
+
+        conquerButtonPanel.setLayoutX(x);
+        conquerButtonPanel.setLayoutY(y);
+
+        System.out.println("📍 Botón de conquista reposicionado en (" + (int)x + ", " + (int)y + ")");
+    }
+
+    // ==================== Boton de conquista =====================
+    /**
+     * Muestra el botón de conquista con efecto de aparición (permanente)
+     */
+    private void showConquerButton() {
+        if (conquerButtonShown || isGamePaused) return;
+
+        conquerButtonShown = true;
+
+        Platform.runLater(() -> {
+            // Si ya existe, solo asegurarnos de que esté visible
+            if (conquerButtonPanel != null) {
+                conquerButtonPanel.setVisible(true);
+                conquerButtonPanel.toFront();
+                return;
+            }
+
+            // Crear panel del botón y añadirlo directamente al root
+            conquerButtonPanel = createConquerButtonPanel();
+
+            // Posicionar inicialmente
+            positionConquerButton();
+
+            // Asegurar que esté al frente (pero detrás del overlay de pausa)
+            root.getChildren().add(conquerButtonPanel);
+            conquerButtonPanel.toFront();
+
+            // Si hay overlay de pausa, asegurar que esté más al frente
+            if (pauseOverlay != null) {
+                pauseOverlay.toFront();
+            }
+
+            // Animación de aparición
+            animateConquerButtonEntrance(conquerButtonPanel);
+
+            System.out.println("⚔ Botón de conquista PERMANENTE añadido al root");
+        });
+    }
+
+    /**
+     * Crea el panel del botón de conquista con estilo TownHall pero con toque rojo
+     */
+    private VBox createConquerButtonPanel() {
+        VBox panel = new VBox(0);
+        panel.setAlignment(Pos.CENTER);
+        panel.setPadding(new Insets(15, 20, 15, 20));
+
+        // Hacer que no sea transparente al mouse
+        panel.setMouseTransparent(false);
+        panel.setPickOnBounds(true);
+
+        // MISMO estilo EXACTO que el TownHall pero con borde rojo
+        panel.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.50); " + // 50% opacidad igual que TownHall
+                        "-fx-background-radius: 12; " +
+                        "-fx-border-color: #e74c3c; " + // Rojo para conquista
+                        "-fx-border-width: 2; " +
+                        "-fx-border-radius: 12; " +
+                        "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.15), 15, 0.5, 0, 3);"
+        );
+
+        // Botón de conquista
+        Button conquerButton = createConquerButton();
+
+        // Hacer que el botón no sea transparente al mouse
+        conquerButton.setMouseTransparent(false);
+        conquerButton.setPickOnBounds(true);
+
+        panel.getChildren().add(conquerButton);
+        return panel;
+    }
+
+
+    /**
+     * Crea el botón de conquista con estilo específico
+     */
+    private Button createConquerButton() {
+        HBox buttonContent = new HBox(20);
+        buttonContent.setAlignment(Pos.CENTER);
+        buttonContent.setPadding(new Insets(8, 20, 8, 20));
+
+        // Texto
+        Label textLabel = new Label("CONQUISTAR");
+        textLabel.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: #e74c3c;");
+
+        buttonContent.getChildren().addAll(textLabel);
+
+        Button button = new Button();
+        button.setGraphic(buttonContent);
+        button.setPrefWidth(150);
+        button.setPrefHeight(30);
+
+        // Importante: hacer el botón interactivo
+        button.setMouseTransparent(false);
+        button.setFocusTraversable(true);
+
+        // ESTILO BASE con 50% opacidad y borde rojo
+        String baseStyle =
+                "-fx-background-color: rgba(255, 255, 255, 0.50); " + // 50% opacidad
+                        "-fx-background-radius: 8; " +
+                        "-fx-border-color: #e74c3c; " + // Rojo
+                        "-fx-border-width: 2; " +
+                        "-fx-border-radius: 8; " +
+                        "-fx-cursor: hand; " +
+                        "-fx-text-fill: #e74c3c;";
+
+        button.setStyle(baseStyle);
+
+        // EFECTO HOVER - Rojo más intenso
+        button.setOnMouseEntered(e -> {
+            String hoverStyle =
+                    "-fx-background-color: rgba(231, 76, 60, 0.15); " + // Fondo rojo muy tenue
+                            "-fx-background-radius: 8; " +
+                            "-fx-border-color: #c0392b; " + // Rojo más oscuro
+                            "-fx-border-width: 2.5; " +
+                            "-fx-border-radius: 8; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-text-fill: #c0392b; " +
+                            "-fx-effect: dropshadow(gaussian, rgba(231, 76, 60, 0.5), 8, 0.5, 0, 2);";
+
+            button.setStyle(hoverStyle);
+            button.setScaleX(1.05);
+            button.setScaleY(1.05);
+        });
+
+        button.setOnMouseExited(e -> {
+            button.setStyle(baseStyle);
+            button.setScaleX(1.0);
+            button.setScaleY(1.0);
+        });
+
+        // Efecto al presionar
+        button.setOnMousePressed(e -> {
+            button.setStyle(
+                    "-fx-background-color: rgba(192, 57, 43, 0.25); " + // Fondo rojo más intenso
+                            "-fx-background-radius: 8; " +
+                            "-fx-border-color: #a93226; " + // Rojo más oscuro aún
+                            "-fx-border-width: 3; " +
+                            "-fx-border-radius: 8; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-text-fill: #a93226;"
+            );
+        });
+
+        button.setOnMouseReleased(e -> {
+            button.setStyle(baseStyle);
+        });
+
+        // ACCIÓN al hacer clic - IMPORTANTE: NO cerrar el popup
+        button.setOnAction(e -> {
+            if(actualPlayer.getKnights().size() == 0){
+                showNoKnightsWarning();
+                return;
+            }
+
+            System.out.println("⚔ ¡INICIANDO CONQUISTA!");
+            // ¡NO cerrar el popup! El botón debe permanecer visible
+            startConquest();
+
+            // Efecto visual para indicar que se hizo clic
+            FadeTransition clickEffect = new FadeTransition(Duration.millis(200), button);
+            clickEffect.setFromValue(1.0);
+            clickEffect.setToValue(0.7);
+            clickEffect.setAutoReverse(true);
+            clickEffect.setCycleCount(2);
+            clickEffect.play();
+        });
+
+        return button;
+    }
+
+    /**
+     * Posiciona el botón de conquista en su lugar
+     */
+    private void positionConqueanimateConquerButtonEntrancerButton() {
+        if (conquerButtonPanel == null) return;
+
+        double panelWidth = 200;
+        double panelHeight = 70;
+        double margin = 20;
+
+        // Posición personalizada (ajusta estos valores)
+        double x = windowWidth * 0.3 - panelWidth / 2;
+        double y = windowHeight * 0.12;
+
+        conquerButtonPanel.setLayoutX(x);
+        conquerButtonPanel.setLayoutY(y);
+
+        System.out.println("📍 Botón posicionado en (" + (int)x + ", " + (int)y + ")");
+    }
+
+    /**
+     * Animación de entrada del botón de conquista
+     */
+    private void animateConquerButtonEntrance(VBox panel) {
+        panel.setScaleX(0.8);
+        panel.setScaleY(0.8);
+        panel.setOpacity(0);
+
+        ScaleTransition scale = new ScaleTransition(Duration.millis(500), panel);
+        scale.setToX(1.0);
+        scale.setToY(1.0);
+        scale.setInterpolator(javafx.animation.Interpolator.EASE_OUT);
+
+        FadeTransition fade = new FadeTransition(Duration.millis(500), panel);
+        fade.setToValue(1.0);
+        fade.setInterpolator(javafx.animation.Interpolator.EASE_OUT);
+
+        // Efecto de pulso sutil
+        Timeline pulse = new Timeline(
+                new KeyFrame(Duration.millis(0), e -> {
+                    panel.setStyle(panel.getStyle().replace(
+                            "-fx-border-color: #e74c3c;",
+                            "-fx-border-color: #ff6b6b;" // Rojo más brillante
+                    ));
+                }),
+                new KeyFrame(Duration.millis(1000), e -> {
+                    panel.setStyle(panel.getStyle().replace(
+                            "-fx-border-color: #ff6b6b;",
+                            "-fx-border-color: #e74c3c;" // Volver al rojo original
+                    ));
+                })
+        );
+        pulse.setCycleCount(3);
+        pulse.setDelay(Duration.millis(300));
+
+        ParallelTransition entrance = new ParallelTransition(scale, fade);
+        entrance.setOnFinished(e -> pulse.play());
+        entrance.play();
+    }
+
+    /**
+     * Inicia el proceso de conquista
+     */
+    private void startConquest() {
+        System.out.println("\n" + "=".repeat(50));
+        System.out.println("⚔ ¡INICIANDO CONQUISTA DE TERRITORIOS!");
+        System.out.println("=".repeat(50));
+
+        // Mostrar mensaje en consola con información de ataque
+        if (actualPlayer != null) {
+            int attackForce = actualPlayer.calculateAttackForce();
+            System.out.println("⚔ Fuerza de ataque del jugador: " + attackForce);
+
+            // Verificar si hay caballeros
+            int knightCount = actualPlayer.getKnights().size();
+            System.out.println("♞ Caballeros disponibles: " + knightCount);
+
+            if (knightCount == 0) {
+                System.out.println("ℹ️ Modo exploración: Sin caballeros, pero puedes explorar territorios");
+            } else {
+                System.out.println("✅ ¡Ejército listo para la batalla!");
+                // ABRIR EL MAPA DE TERRITORIOS
+                openConquestMap();
+            }
+        }
+
+        System.out.println("=".repeat(50) + "\n");
+    }
+
+
+    /**
+     * Muestra advertencia cuando no hay caballeros para conquistar
+     */
+    private void showNoKnightsWarning() {
+        Platform.runLater(() -> {
+            Stage warningStage = new Stage();
+            warningStage.initModality(Modality.APPLICATION_MODAL);
+            warningStage.initStyle(StageStyle.TRANSPARENT);
+            warningStage.setTitle("Sin caballeros");
+
+            VBox warningPanel = new VBox(15);
+            warningPanel.setPadding(new Insets(25, 30, 25, 30));
+            warningPanel.setAlignment(Pos.CENTER);
+            warningPanel.setStyle(
+                    "-fx-background-color: rgba(255, 255, 255, 0.50); " +
+                            "-fx-background-radius: 15; " +
+                            "-fx-border-color: #e74c3c; " +
+                            "-fx-border-width: 2; " +
+                            "-fx-border-radius: 15; " +
+                            "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 10, 0.5, 0, 2);"
+            );
+
+            Label warningIcon = new Label("⚠");
+            warningIcon.setStyle("-fx-font-size: 36px; -fx-padding: 0 0 5 0;");
+
+            VBox messageContainer = new VBox(5);
+            messageContainer.setAlignment(Pos.CENTER);
+
+            Label titleLabel = new Label("¡Sin caballeros!");
+            titleLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #e74c3c;");
+
+            Label detailLabel = new Label("Necesitas caballeros para conquistar territorios\n\n" +
+                    "¡Entrena caballeros en el Cuartel!");
+            detailLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #000000; -fx-text-alignment: center;");
+            detailLabel.setWrapText(true);
+
+            messageContainer.getChildren().addAll(titleLabel, detailLabel);
+
+            Button okButton = new Button("Entendido");
+            okButton.setPrefWidth(150);
+            okButton.setPrefHeight(38);
+            okButton.setStyle(
+                    "-fx-background-color: rgba(255, 255, 255, 0.5); " +
+                            "-fx-background-radius: 6; " +
+                            "-fx-border-color: #e74c3c; " +
+                            "-fx-border-width: 2; " +
+                            "-fx-border-radius: 6; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-text-fill: #2c3e50; " +
+                            "-fx-font-size: 12px; " +
+                            "-fx-font-weight: bold;"
+            );
+
+            okButton.setOnMouseEntered(e -> {
+                okButton.setStyle(
+                        "-fx-background-color: rgba(236, 240, 241, 0.5); " +
+                                "-fx-background-radius: 6; " +
+                                "-fx-border-color: #c0392b; " +
+                                "-fx-border-width: 2.5; " +
+                                "-fx-border-radius: 6; " +
+                                "-fx-cursor: hand; " +
+                                "-fx-text-fill: #2c3e50; " +
+                                "-fx-font-size: 12px; " +
+                                "-fx-font-weight: bold; " +
+                                "-fx-effect: dropshadow(gaussian, rgba(192, 57, 43, 0.3), 5, 0.5, 0, 1);"
+                );
+            });
+
+            okButton.setOnMouseExited(e -> {
+                okButton.setStyle(
+                        "-fx-background-color: rgba(255, 255, 255, 0.5); " +
+                                "-fx-background-radius: 6; " +
+                                "-fx-border-color: #e74c3c; " +
+                                "-fx-border-width: 2; " +
+                                "-fx-border-radius: 6; " +
+                                "-fx-cursor: hand; " +
+                                "-fx-text-fill: #2c3e50; " +
+                                "-fx-font-size: 12px; " +
+                                "-fx-font-weight: bold; " +
+                                "-fx-effect: null;"
+                );
+            });
+
+            okButton.setOnAction(e -> warningStage.close());
+
+            warningPanel.getChildren().addAll(warningIcon, messageContainer, okButton);
+
+            StackPane rootPane = new StackPane(warningPanel);
+            rootPane.setStyle("-fx-background-color: transparent;");
+            rootPane.setAlignment(Pos.CENTER);
+
+            Scene warningScene = new Scene(rootPane, 300, 250);
+            warningScene.setFill(Color.TRANSPARENT);
+
+            warningStage.initOwner(root.getScene().getWindow());
+            warningStage.setScene(warningScene);
+            warningStage.setResizable(false);
+            warningStage.showAndWait();
+        });
+    }
+
 
     // En el método start(), después de inicializar todo:
     private void startConstructionUpdateLoop() {
@@ -3674,6 +4181,17 @@ public class GameApp extends Application {
      */
     private void disableGameInteractions(boolean disable) {
         if (disable) {
+            // Manejar el botón de conquista (si existe)
+            if (conquerButtonPanel != null) {
+                // El botón debe seguir siendo interactivo durante la pausa
+                conquerButtonPanel.setMouseTransparent(false);
+                for (Node node : conquerButtonPanel.getChildren()) {
+                    node.setMouseTransparent(false);
+                }
+
+                // Asegurar que esté al frente del overlay de pausa
+                conquerButtonPanel.toFront();
+            }
             // PAUSAR TODAS LAS TAREAS DE TALA
             for (WoodcuttingTask task : activeWoodcuttingTasks.values()) {
                 if (task.collectionTimeline != null) {
