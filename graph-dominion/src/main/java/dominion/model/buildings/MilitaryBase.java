@@ -70,7 +70,7 @@ public class MilitaryBase extends Building{
     }
     public boolean createKnight(){
         final Map<ResourceType,Integer> KNIGHT_COST = Map.of(ResourceType.GOLD,80);
-        final int KNIGHT_TRAINING_TIME = 10 ;
+        final int KNIGHT_TRAINING_TIME = 40 ;
         return startUnitCreation(UnitType.KNIGHT,KNIGHT_COST,KNIGHT_TRAINING_TIME);
     }
     public void addKnights(int amount){

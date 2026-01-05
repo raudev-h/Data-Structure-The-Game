@@ -893,8 +893,16 @@ public class GameApp extends Application {
             return;
         }
 
+        // Guardar referencia a los leñadores antes de deseleccionar
+        List<ImageView> woodcuttersToProcess = new ArrayList<>(woodcutters);
+
+        // DESELECCIONAR los leñadores INMEDIATAMENTE
+        clearSelectedUnitViews();
+
+        System.out.println("✅ Leñadores deseleccionados al comenzar a talar");
+
         // Detener cualquier animación de movimiento actual
-        for (ImageView woodcutter : woodcutters) {
+        for (ImageView woodcutter : woodcuttersToProcess) {
             stopWoodcuttingIfActive(woodcutter);
 
             // Detener cualquier animación de movimiento en curso
@@ -910,15 +918,14 @@ public class GameApp extends Application {
         double treeHeight = tree.getFitHeight();
 
         // Calcular formación alrededor del árbol
-        moveWoodcuttersToTree(woodcutters, treeX, treeY, treeWidth, treeHeight);
+        moveWoodcuttersToTree(woodcuttersToProcess, treeX, treeY, treeWidth, treeHeight);
 
         // Iniciar tala para cada leñador
-        for (ImageView woodcutter : woodcutters) {
+        for (ImageView woodcutter : woodcuttersToProcess) {
             startWoodcutting(woodcutter, tree);
         }
 
-        // NO LIMPIAR la selección aquí - mantenlos seleccionados
-        // clearSelectedUnitViews(); // <-- COMENTA O ELIMINA ESTA LÍNEA
+        System.out.println("🪓 " + woodcuttersToProcess.size() + " leñadores enviados a talar (ya deseleccionados)");
     }
 
     private boolean isWoodcutter(ImageView unit) {
@@ -1207,8 +1214,16 @@ public class GameApp extends Application {
             return;
         }
 
+        // Guardar referencia a los mineros antes de deseleccionar
+        List<ImageView> minersToProcess = new ArrayList<>(miners);
+
+        // DESELECCIONAR los mineros INMEDIATAMENTE
+        clearSelectedUnitViews();
+
+        System.out.println("✅ Mineros deseleccionados al comenzar a minar");
+
         // Detener cualquier animación de movimiento actual
-        for (ImageView miner : miners) {
+        for (ImageView miner : minersToProcess) {
             stopMiningIfActive(miner);
 
             // Detener cualquier animación de movimiento en curso
@@ -1224,10 +1239,10 @@ public class GameApp extends Application {
         double mineHeight = mine.getFitHeight();
 
         // Calcular formación alrededor de la mina
-        moveMinersToMine(miners, mineX, mineY, mineWidth, mineHeight);
+        moveMinersToMine(minersToProcess, mineX, mineY, mineWidth, mineHeight);
 
         // Iniciar minería para cada minero
-        for (ImageView miner : miners) {
+        for (ImageView miner : minersToProcess) {
             startMining(miner, mine);
         }
     }
