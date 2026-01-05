@@ -66,8 +66,8 @@ public class GameControler {
         finalEnemyTownHall.addMilitaryBase(bossTerritory);
 
         //Añadir caballeros a las militaryBase
-        enemyTownHall.getMilitaryBases().getFirst().addKnights(1);
-        finalEnemyTownHall.getMilitaryBases().getFirst().addKnights(2);
+        enemyTownHall.getMilitaryBases().getFirst().addKnights(10);
+        finalEnemyTownHall.getMilitaryBases().getFirst().addKnights(20);
 
 
     }

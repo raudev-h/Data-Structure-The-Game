@@ -156,6 +156,8 @@ public class Map_Territories extends Pane {
         }
     }
 
+
+
     private void adjustBackgroundPosition(ImageView mapBackground) {
         if (mapBackground.getImage() == null) return;
 
@@ -368,10 +370,11 @@ public class Map_Territories extends Pane {
         }
 
         territory.setOnMouseClicked(e -> {
-                    if (gameApp.isTerritoryConquered(territoryNumber)) {
-                        System.out.println("⚠️ Este territorio ya fue conquistado");
-                        return;
-                        }
+            if (gameApp.isTerritoryConquered(territoryNumber)) {
+                System.out.println("⚠️ Este territorio ya fue conquistado");
+                return;
+            }
+
             Territory actual = gameApp.getGameMap().getTerritories().get(territoryNumber);
             boolean puedeAtacar = gameMap.playerCanAttack(principalPlayer, actual);
 
@@ -381,8 +384,14 @@ public class Map_Territories extends Pane {
                 System.out.println("Attack Result: "+ attackResult + " ---------");
 
                 if(attackResult.equals(AttackResult.VICTORY)){
-                    // ¡Victoria! Mostrar pantalla de victoria
-                    showVictoryScreen(territory, territoryNumber, name);
+                    // ¡Victoria! Verificar si es el territorio final (territorio 2)
+                    if (territoryNumber == 2) { // Terriotrio final/jefe
+                        // Mostrar pantalla de victoria final especial
+                        showFinalVictoryScreen(territoryNumber, name);
+                    } else {
+                        // Mostrar pantalla de victoria normal
+                        showVictoryScreen(territory, territoryNumber, name);
+                    }
 
                     // Cambiar el territorio a verde (propio)
                     conquerTerritory(territory, territoryNumber);
@@ -615,10 +624,6 @@ public class Map_Territories extends Pane {
             Label titleLabel = new Label("¡VICTORIA!");
             titleLabel.setStyle("-fx-font-size: 28px; -fx-font-weight: bold; -fx-text-fill: #27ae60;");
 
-            // Mensaje de victoria
-            Label messageLabel = new Label("Has conquistado " + territoryName + "!");
-            messageLabel.setStyle("-fx-font-size: 18px; -fx-text-fill: #2c3e50; -fx-font-weight: bold;");
-
             // Separador elegante
             Region separator = new Region();
             separator.setPrefHeight(2);
@@ -635,7 +640,6 @@ public class Map_Territories extends Pane {
             panel.getChildren().addAll(
                     victoryImageView,
                     titleLabel,
-                    messageLabel,
                     separator,
                     closeMapButton
             );
@@ -1574,6 +1578,275 @@ public class Map_Territories extends Pane {
                                 "-fx-padding: 5 12;"
                 );
             }
+        }
+    }
+    /**
+     * Muestra la pantalla de victoria del jefe final (territorio 2)
+     */
+    private void showFinalVictoryScreen(int territoryNumber, String territoryName) {
+        if (isVictoryShowing) return;
+        isVictoryShowing = true;
+
+        // Crear overlay que cubra TODA la pantalla
+        victoryOverlay = new StackPane();
+
+        // CRÍTICO: Fondo negro con 85% opacidad
+        victoryOverlay.setStyle("-fx-background-color: rgba(0, 0, 0, 0.85);");
+
+        // IMPORTANTE: Asegurar que cubra toda el área visible
+        victoryOverlay.setMinSize(Region.USE_COMPUTED_SIZE, Region.USE_COMPUTED_SIZE);
+        victoryOverlay.setPrefSize(getWidth(), getHeight());
+        victoryOverlay.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
+
+        // VINCULAR tamaño al contenedor principal para que se ajuste automáticamente
+        victoryOverlay.prefWidthProperty().bind(widthProperty());
+        victoryOverlay.prefHeightProperty().bind(heightProperty());
+
+        // Permitir interacción con el botón
+        victoryOverlay.setMouseTransparent(false);
+
+        // Panel de victoria final
+        VBox finalVictoryPanel = createFinalVictoryPanel(territoryName);
+        finalVictoryPanel.setOpacity(0);
+        finalVictoryPanel.setScaleX(0.9);
+        finalVictoryPanel.setScaleY(0.9);
+
+        victoryOverlay.getChildren().add(finalVictoryPanel);
+        StackPane.setAlignment(finalVictoryPanel, Pos.CENTER);
+
+        // Añadir overlay a la escena
+        getChildren().add(victoryOverlay);
+        victoryOverlay.toFront();
+
+        // Forzar layout para asegurar que cubre toda el área
+        victoryOverlay.layout();
+
+        // Animación de entrada
+        victoryOverlay.setOpacity(0); // Comienza transparente
+
+        FadeTransition overlayFade = new FadeTransition(Duration.millis(500), victoryOverlay);
+        overlayFade.setToValue(1.0);
+
+        FadeTransition panelFade = new FadeTransition(Duration.millis(400), finalVictoryPanel);
+        panelFade.setFromValue(0);
+        panelFade.setToValue(1);
+        panelFade.setDelay(Duration.millis(100));
+
+        ScaleTransition panelScale = new ScaleTransition(Duration.millis(400), finalVictoryPanel);
+        panelScale.setFromX(0.9);
+        panelScale.setFromY(0.9);
+        panelScale.setToX(1.0);
+        panelScale.setToY(1.0);
+        panelScale.setDelay(Duration.millis(100));
+        panelScale.setInterpolator(javafx.animation.Interpolator.EASE_OUT);
+
+        ParallelTransition entrance = new ParallelTransition(overlayFade, panelFade, panelScale);
+        entrance.play();
+
+        System.out.println("🎉🎉🎉 ¡VICTORIA FINAL! Territorio jefe conquistado: " + territoryName);
+        System.out.println("📏 Tamaño overlay: " + getWidth() + "x" + getHeight());
+    }
+
+    /**
+     * Crea el panel de victoria final con color amarillo predominante
+     */
+    private VBox createFinalVictoryPanel(String territoryName) {
+        VBox panel = new VBox(20);
+        panel.setAlignment(Pos.CENTER);
+        panel.setPadding(new Insets(30, 40, 30, 40));
+        panel.setMaxWidth(450);
+        panel.setMaxHeight(550);
+
+        // Estilo con color amarillo dorado predominante
+        panel.setStyle(
+                "-fx-background-color: rgba(255, 255, 255, 0.50); " +
+                        "-fx-background-radius: 15; " +
+                        "-fx-border-color: linear-gradient(to bottom, #FFD700, #FF8C00); " + // Gradiente amarillo/dorado
+                        "-fx-border-width: 3; " +
+                        "-fx-border-radius: 15; " +
+                        "-fx-effect: dropshadow(gaussian, rgba(218, 165, 32, 0.4), 20, 0.5, 0, 5);" // Sombra dorada
+        );
+
+        try {
+            // Cargar imagen de victoria (misma imagen pero con contexto diferente)
+            Image victoryImage = new Image("file:src/main/resources/images/VictoriaFinal.png");
+            ImageView victoryImageView = new ImageView(victoryImage);
+            victoryImageView.setPreserveRatio(true);
+            victoryImageView.setFitWidth(280);
+
+            // Título con estilo dorado
+            Label titleLabel = new Label("¡VICTORIA ABSOLUTA!");
+            titleLabel.setStyle(
+                    "-fx-font-size: 32px; " +
+                            "-fx-font-weight: bold; " +
+                            "-fx-text-fill: linear-gradient(to bottom, #FFD700, #B8860B); " + // Texto con gradiente dorado
+                            "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.5), 5, 0.5, 1, 1);"
+            );
+
+            // Mensaje de victoria final
+            Label messageLabel = new Label("¡Has conquistado el territorio final!");
+            messageLabel.setStyle("-fx-font-size: 20px; -fx-text-fill: #8B4513; -fx-font-weight: bold;");
+
+            // Subtítulo específico para el territorio jefe
+            Label territoryLabel = new Label(territoryName);
+            territoryLabel.setStyle(
+                    "-fx-font-size: 22px; " +
+                            "-fx-font-weight: bold; " +
+                            "-fx-text-fill: #DAA520; " +
+                            "-fx-font-style: italic;"
+            );
+
+            // Separador elegante (dorado)
+            Region separator = new Region();
+            separator.setPrefHeight(3);
+            separator.setPrefWidth(250);
+            separator.setStyle(
+                    "-fx-background-color: linear-gradient(to right, transparent, #FFD700, #FFA500, #FFD700, transparent);"
+            );
+
+            // Botón para ir al menú principal
+            Button menuButton = createFinalVictoryButton("IR AL MENÚ PRINCIPAL");
+            menuButton.setOnAction(e -> {
+                hideVictoryScreen();
+                goToMainMenu();
+            });
+
+            panel.getChildren().addAll(
+                    victoryImageView,
+                    titleLabel,
+                    messageLabel,
+                    territoryLabel,
+                    separator,
+                    menuButton
+            );
+
+        } catch (Exception ex) {
+            System.err.println("❌ Error al cargar imagen de victoria final: " + ex.getMessage());
+
+            // Placeholder si no se carga la imagen
+            VBox textContent = new VBox(15);
+            textContent.setAlignment(Pos.CENTER);
+
+            Label victoryText = new Label("¡VICTORIA ABSOLUTA!");
+            victoryText.setStyle("-fx-font-size: 28px; -fx-font-weight: bold; -fx-text-fill: #FFD700;");
+
+            Label messageText = new Label("¡Has conquistado el territorio final:\n" + territoryName + "!");
+            messageText.setStyle("-fx-font-size: 20px; -fx-text-fill: #8B4513; -fx-font-weight: bold; -fx-text-alignment: center;");
+            messageText.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
+
+            Label congratsText = new Label("¡Felicidades! Has completado el juego.\nTu reino está completamente conquistado.");
+            congratsText.setStyle("-fx-font-size: 16px; -fx-text-fill: #654321; -fx-text-alignment: center;");
+            congratsText.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
+
+            textContent.getChildren().addAll(victoryText, messageText, congratsText);
+
+            Button menuButton = createFinalVictoryButton("IR AL MENÚ PRINCIPAL");
+            menuButton.setOnAction(e -> {
+                hideVictoryScreen();
+                goToMainMenu();
+            });
+
+            panel.getChildren().addAll(textContent, menuButton);
+        }
+
+        return panel;
+    }
+
+    /**
+     * Crea botón para pantalla de victoria final con estilo dorado
+     */
+    private Button createFinalVictoryButton(String text) {
+        HBox buttonContent = new HBox(8);
+        buttonContent.setAlignment(Pos.CENTER);
+        buttonContent.setPadding(new Insets(12, 30, 12, 30));
+
+        Label textLabel = new Label(text);
+        textLabel.setStyle("-fx-font-size: 15px; -fx-font-weight: bold; -fx-text-fill: #8B4513;");
+
+        // Ícono de corona opcional
+        Label crownIcon = new Label("👑");
+        crownIcon.setStyle("-fx-font-size: 20px;");
+
+        buttonContent.getChildren().addAll(crownIcon, textLabel);
+
+        Button button = new Button();
+        button.setGraphic(buttonContent);
+        button.setPrefWidth(300);
+        button.setPrefHeight(60);
+
+        // ESTILO BASE con gradiente dorado
+        String baseStyle =
+                "-fx-background-color: linear-gradient(to bottom, #FFD700, #FFA500); " +
+                        "-fx-background-radius: 10; " +
+                        "-fx-border-color: #8B4513; " +
+                        "-fx-border-width: 2; " +
+                        "-fx-border-radius: 10; " +
+                        "-fx-cursor: hand; " +
+                        "-fx-text-fill: #8B4513;";
+
+        button.setStyle(baseStyle);
+
+        // EFECTO HOVER - más brillante
+        button.setOnMouseEntered(e -> {
+            String hoverStyle =
+                    "-fx-background-color: linear-gradient(to bottom, #FFEC8B, #FFB90F); " +
+                            "-fx-background-radius: 10; " +
+                            "-fx-border-color: #654321; " +
+                            "-fx-border-width: 3; " +
+                            "-fx-border-radius: 10; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-effect: dropshadow(gaussian, rgba(218, 165, 32, 0.6), 15, 0.5, 0, 3);";
+
+            button.setStyle(hoverStyle);
+            button.setScaleX(1.08);
+            button.setScaleY(1.08);
+        });
+
+        button.setOnMouseExited(e -> {
+            button.setStyle(baseStyle);
+            button.setScaleX(1.0);
+            button.setScaleY(1.0);
+        });
+
+        // Efecto al presionar
+        button.setOnMousePressed(e -> {
+            button.setStyle(
+                    "-fx-background-color: linear-gradient(to bottom, #FFA500, #CD853F); " +
+                            "-fx-background-radius: 10; " +
+                            "-fx-border-color: #654321; " +
+                            "-fx-border-width: 4; " +
+                            "-fx-border-radius: 10; " +
+                            "-fx-cursor: hand; " +
+                            "-fx-text-fill: #8B4513;"
+            );
+        });
+
+        button.setOnMouseReleased(e -> {
+            button.setStyle(baseStyle);
+        });
+
+        return button;
+    }
+
+    /**
+     * Navega al menú principal cerrando la ventana actual
+     */
+    private void goToMainMenu() {
+        System.out.println("🚪 Navegando al menú principal...");
+
+        // Cerrar la ventana principal de GameApp
+        if (gameApp != null) {
+            Platform.runLater(() -> {
+                // Obtener el Stage principal y cerrarlo
+                Stage mainStage = (Stage) gameApp.getSceneContainer().getScene().getWindow();
+                if (mainStage != null) {
+                    mainStage.close();
+                    System.out.println("✅ Ventana del juego cerrada");
+
+                    // Aquí podrías abrir la ventana del menú principal si tienes una clase separada
+                    // new MainMenu().start(new Stage());
+                }
+            });
         }
     }
 

@@ -338,7 +338,7 @@ public class GameApp extends Application {
      */
     private void setupConquerButtonTimer() {
         conquerButtonTimer = new Timeline(
-                new KeyFrame(Duration.seconds(10), e -> showConquerButton())
+                new KeyFrame(Duration.seconds(300), e -> showConquerButton())
         );
         conquerButtonTimer.setCycleCount(1); // Solo una vez
         conquerButtonTimer.play();
@@ -5024,8 +5024,7 @@ public class GameApp extends Application {
 
             TownHall townHall1 = new TownHall("1", territory1, 100, 5);
             territory1.setTownHall(townHall1);
-            territory1.getTownHall().getStoredResources().addResource(ResourceType.WOOD, 600);
-            territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, 1000);
+            territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, 200);
 
             DropShadow glow = new DropShadow();
             glow.setColor(Color.rgb(255, 215, 0, 0.7));
