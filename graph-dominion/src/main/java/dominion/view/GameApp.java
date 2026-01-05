@@ -64,6 +64,7 @@ public class GameApp extends Application {
 
 
     private static final Set<Integer> conqueredTerritories = new HashSet<>();
+    private LinkedHashMap<ImageView, MilitaryBase> conexionMilitaryBase= new LinkedHashMap<>();
 
 
 
@@ -753,11 +754,29 @@ public class GameApp extends Application {
         if (territory1 != null && territory1.getTownHall() != null) {
             territory1.getTownHall().processConstructionQueue();
 
-            // Procesar entrenamientos de unidades
-            processUnitTrainingQueue();
+            // **Procesar entrenamientos de unidades en TODOS los cuarteles**
+            processAllUnitTrainingQueues();
 
             // Sincronizar con el backend
             syncConstructionsWithBackend();
+
+            // **Sincronizar caballeros completados de TODOS los cuarteles**
+            syncCompletedKnights();
+        }
+    }
+
+    /**
+     * Procesa las colas de entrenamiento de TODOS los cuarteles
+     */
+    private void processAllUnitTrainingQueues() {
+        for (MilitaryBase militaryBase : conexionMilitaryBase.values()) {
+            if (militaryBase != null) {
+                try {
+                    militaryBase.processTrainingQueue();
+                } catch (Exception e) {
+                    System.err.println("❌ Error procesando cola de entrenamiento: " + e.getMessage());
+                }
+            }
         }
     }
 
@@ -2643,48 +2662,91 @@ public class GameApp extends Application {
                 // Procesar cola de entrenamiento del backend
                 militaryBase.processTrainingQueue();
 
-                // Sincronizar caballeros completados
-                syncCompletedKnights(militaryBase);
             }
         }
     }
 
-    private void syncCompletedKnights(MilitaryBase militaryBase) {
-        if (militaryBase == null) return;
+    private void syncCompletedKnights() {
+        if (territory1 == null || territory1.getTownHall() == null) return;
 
         // Obtener caballeros del backend
         List<Knight> backendKnights = actualPlayer.getKnights();
-        System.out.println("Hay "+ backendKnights.size() + " caballeros--------------------");
 
-        // Verificar si hay caballeros nuevos en el backend
-        for (Knight knight : backendKnights) {
-            String unitId = knight.getId();
+        // Verificar TODOS los MilitaryBase conectados
+        for (Map.Entry<ImageView, MilitaryBase> entry : conexionMilitaryBase.entrySet()) {
+            MilitaryBase militaryBase = entry.getValue();
+            ImageView barracksView = entry.getKey();
 
-            // Verificar si ya existe en el frontend
-            if (!isKnightInFrontend(unitId) && unitTrainingMap.containsKey(unitId)) {
-                // ¡Nuevo caballero completado!
-                System.out.println("🎉 ¡Caballero completado en backend! ID: " + unitId);
+            if (militaryBase != null) {
+                // Procesar la cola de entrenamiento de ESTE cuartel específico
+                militaryBase.processTrainingQueue();
 
-                // Obtener información del entrenamiento
-                UnitTrainingInfo trainingInfo = unitTrainingMap.get(unitId);
-
-                // Crear caballero en el frontend
-                if (trainingInfo != null && trainingInfo.barracksView != null) {
-                    createCompletedKnight(unitId, trainingInfo.barracksView);
-                } else {
-                    // Si no tenemos referencia al cuartel, usar uno por defecto
-                    ImageView barracks = findNearestBarracks();
-                    if (barracks != null) {
-                        createCompletedKnight(unitId, barracks);
-                    }
-                }
-
-                // Limpiar referencia
-                unitTrainingMap.remove(unitId);
-
-                // Eliminar indicador de entrenamiento
-                removeTrainingIndicator(unitId);
+                // Verificar si hay caballeros nuevos en el backend para ESTE cuartel
+                syncKnightsForSpecificBarracks(barracksView, militaryBase, backendKnights);
             }
+        }
+    }
+
+    private void syncKnightsForSpecificBarracks(ImageView barracksView, MilitaryBase militaryBase, List<Knight> backendKnights) {
+        try {
+            // Obtener la cola de entrenamiento de ESTE cuartel
+            Deque<UnitCreationOrder> trainingQueue = militaryBase.getTrainingQueue();
+
+            System.out.println("🔍 Verificando cuartel: " + barracksView.getId() +
+                    " - Unidades en entrenamiento: " + trainingQueue.size());
+
+            // Verificar cada orden de entrenamiento
+            for (UnitCreationOrder order : trainingQueue) {
+                String unitId = order.getUnitId();
+
+                // Si el tiempo restante es 0 o menos, está completado
+                if (order.getRemainingTime() <= 0) {
+                    System.out.println("✅ ¡Caballero completado en cuartel " + barracksView.getId() + "! ID: " + unitId);
+
+                    // **PRIMERO eliminar los indicadores**
+                    removeTrainingIndicator(unitId);
+
+                    // Verificar si ya existe en el frontend
+                    if (!isKnightInFrontend(unitId)) {
+                        // Crear caballero en el frontend
+                        createCompletedKnight(unitId, barracksView);
+                    }
+
+                    // Limpiar referencia
+                    unitTrainingMap.remove(unitId);
+
+                    // IMPORTANTE: Marcar la orden como completada en el backend
+                    //order.markAsCompleted();
+
+                    // **FORZAR eliminación del indicador después de un tiempo**
+                    Timeline cleanup = new Timeline(
+                            new KeyFrame(Duration.seconds(1), e -> removeTrainingIndicator(unitId))
+                    );
+                    cleanup.play();
+                }
+            }
+
+            // También verificar caballeros ya existentes en el backend
+            for (Knight knight : backendKnights) {
+                String knightId = knight.getId();
+
+                // Verificar si ya existe en el frontend
+                if (!isKnightInFrontend(knightId)) {
+                    System.out.println("🔄 Sincronizando caballero existente del backend: " + knightId);
+
+                    // **Primero eliminar cualquier indicador antiguo**
+                    removeTrainingIndicator(knightId);
+
+                    createCompletedKnight(knightId, barracksView);
+
+                    // **Asegurar limpieza**
+                    unitTrainingMap.remove(knightId);
+                }
+            }
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al sincronizar cuartel " + barracksView.getId() + ": " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
@@ -2829,19 +2891,42 @@ public class GameApp extends Application {
     }
 
     private void removeTrainingIndicator(String unitId) {
-        // Eliminar vista de entrenamiento
-        Node trainingView = root.lookup("#training_" + unitId);
-        if (trainingView != null) {
-            root.getChildren().remove(trainingView);
-        }
+        Platform.runLater(() -> {
+            // Eliminar vista de entrenamiento
+            Node trainingView = root.lookup("#training_" + unitId);
+            if (trainingView != null) {
+                FadeTransition fadeOut = new FadeTransition(Duration.millis(300), trainingView);
+                fadeOut.setFromValue(1.0);
+                fadeOut.setToValue(0.0);
+                fadeOut.setOnFinished(e -> root.getChildren().remove(trainingView));
+                fadeOut.play();
+            }
 
-        // Eliminar barra de progreso
-        Node progressBar = root.lookup("#training_progress_" + unitId);
-        if (progressBar != null) {
-            root.getChildren().remove(progressBar);
-        }
+            // Eliminar barra de progreso
+            Node progressBar = root.lookup("#training_progress_" + unitId);
+            if (progressBar != null) {
+                FadeTransition fadeOut = new FadeTransition(Duration.millis(300), progressBar);
+                fadeOut.setFromValue(1.0);
+                fadeOut.setToValue(0.0);
+                fadeOut.setOnFinished(e -> root.getChildren().remove(progressBar));
+                fadeOut.play();
+            }
 
-        System.out.println("🧹 Indicadores de entrenamiento eliminados para: " + unitId);
+            // También buscar por otros posibles IDs
+            for (Node node : new ArrayList<>(root.getChildren())) {
+                if (node.getId() != null && node.getId().contains(unitId)) {
+                    if (node.getId().contains("training") || node.getId().contains("progress")) {
+                        FadeTransition fade = new FadeTransition(Duration.millis(300), node);
+                        fade.setFromValue(1.0);
+                        fade.setToValue(0.0);
+                        fade.setOnFinished(e -> root.getChildren().remove(node));
+                        fade.play();
+                    }
+                }
+            }
+
+            System.out.println("🧹 Indicadores de entrenamiento eliminados para: " + unitId);
+        });
     }
 
     // Método para convertir tipo de construcción a nombre de imagen
@@ -3352,6 +3437,7 @@ public class GameApp extends Application {
 
             System.out.println("✅ Construcción completada y edificio creado: " + buildingType);
 
+
         } else {
             System.out.println("⚠️ No se encontró vista de construcción para: " + buildingId);
             System.out.println("🔄 Buscando construcción en cola backend...");
@@ -3760,36 +3846,6 @@ public class GameApp extends Application {
         }
     }
 
-    // Método para reemplazar construcción con edificio final
-    private void replaceConstructionWithBuilding(ImageView constructionView, String buildingType, String constructionId) {
-        try {
-            double x = constructionView.getX();
-            double y = constructionView.getY();
-            double width = constructionView.getFitWidth();
-            double height = constructionView.getFitHeight();
-
-            // Detener animación de pulsación
-            constructionView.setOpacity(1.0);
-            FadeTransition fadeOut = new FadeTransition(Duration.millis(500), constructionView);
-            fadeOut.setToValue(0);
-
-            fadeOut.setOnFinished(e -> {
-                // Remover la construcción
-                root.getChildren().remove(constructionView);
-
-                // Crear el edificio final
-                createFinalBuilding(x, y, width, height, buildingType);
-
-                System.out.println("✅ Construcción completada: " + buildingType);
-            });
-
-            fadeOut.play();
-
-        } catch (Exception e) {
-            System.err.println("❌ Error al reemplazar construcción: " + e.getMessage());
-        }
-    }
-
     private void createFinalBuilding(double x, double y, double width, double height, String buildingType) {
         try {
             String imagePath = "file:src/main/resources/images/" + buildingType + ".png";
@@ -3805,9 +3861,15 @@ public class GameApp extends Application {
             buildingView.setY(y);
             buildingView.setOpacity(0); // Comienza transparente
 
-            // Marcar como cuartel si es el caso
+            // **IMPORTANTE: Para TODOS los cuarteles, obtener conexión con backend**
             if (buildingType.equalsIgnoreCase("Cuartel")) {
-                buildingView.setId("Cuartel_" + System.currentTimeMillis());
+                String buildingId = "Cuartel_" + System.currentTimeMillis();
+                buildingView.setId(buildingId);
+
+                System.out.println("🏗️ Creando cuartel: " + buildingId);
+
+                // **CONECTAR ESTE CUARTEL CON EL BACKEND**
+                connectBarracksToBackend(buildingView);
             }
 
             DropShadow shadow = new DropShadow();
@@ -3853,9 +3915,202 @@ public class GameApp extends Application {
         } catch (Exception e) {
             System.err.println("❌ Error al crear edificio final: " + e.getMessage());
             e.printStackTrace();
-            // Crear placeholder si falla
             createPlaceholderBuilding(x, y, width, height, buildingType);
         }
+    }
+    /**
+     * Conecta un cuartel visual con el backend (MilitaryBase)
+     */
+    private void connectBarracksToBackend(ImageView barracksView) {
+        try {
+            System.out.println("🔗 Intentando conectar cuartel: " + barracksView.getId());
+
+            // Verificar si ya está conectado
+            if (conexionMilitaryBase.containsKey(barracksView)) {
+                System.out.println("✅ Cuartel ya conectado: " + barracksView.getId());
+                return;
+            }
+
+            // Buscar un MilitaryBase NUEVO (sin conexión)
+            MilitaryBase militaryBase = findNewMilitaryBase();
+
+            if (militaryBase != null) {
+                // Guardar la conexión
+                conexionMilitaryBase.put(barracksView, militaryBase);
+
+                System.out.println("✅ CONEXIÓN EXITOSA:");
+                System.out.println("   Cuartel visual: " + barracksView.getId());
+                System.out.println("   Posición: (" + barracksView.getX() + ", " + barracksView.getY() + ")");
+                System.out.println("   MilitaryBase backend: " + militaryBase);
+
+                // Depurar conexiones después de conectar
+                debugMilitaryBaseConnections();
+
+            } else {
+                System.out.println("❌ No se pudo conectar cuartel: MilitaryBase no encontrado");
+
+                // Intentar crear uno nuevo específicamente para este cuartel
+                System.out.println("🔄 Intentando crear MilitaryBase específico...");
+                if (territory1 != null && territory1.getTownHall() != null) {
+                    boolean created = territory1.getTownHall().createMilitaryBase();
+                    if (created) {
+                        // Buscar el más reciente (que debería ser el que acabamos de crear)
+                        militaryBase = findLatestMilitaryBase();
+                        if (militaryBase != null) {
+                            conexionMilitaryBase.put(barracksView, militaryBase);
+                            System.out.println("✅ MilitaryBase creado y conectado para: " + barracksView.getId());
+                        }
+                    }
+                }
+            }
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al conectar cuartel: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Encuentra el MilitaryBase más reciente SIN CONEXIÓN
+     */
+    private MilitaryBase findLatestMilitaryBase() {
+        if (territory1 == null || territory1.getTownHall() == null) {
+            return null;
+        }
+
+        try {
+            List<dominion.model.buildings.Building> ownedBuildings = territory1.getTownHall().getOwnedBuildings();
+            System.out.println("🔍 Buscando MilitaryBase más reciente en " + ownedBuildings.size() + " edificios");
+
+            MilitaryBase latestMilitaryBase = null;
+
+            // Buscar de atrás hacia adelante (el más reciente estará al final)
+            for (int i = ownedBuildings.size() - 1; i >= 0; i--) {
+                dominion.model.buildings.Building building = ownedBuildings.get(i);
+                if (building instanceof MilitaryBase) {
+                    MilitaryBase mb = (MilitaryBase) building;
+
+                    // Verificar si ya está en uso
+                    boolean alreadyInUse = false;
+                    for (MilitaryBase usedMb : conexionMilitaryBase.values()) {
+                        if (usedMb == mb) {
+                            alreadyInUse = true;
+                            break;
+                        }
+                    }
+
+                    if (!alreadyInUse) {
+                        latestMilitaryBase = mb;
+                        System.out.println("✅ MilitaryBase libre encontrado en posición " + i);
+                        break;
+                    }
+                }
+            }
+
+            return latestMilitaryBase;
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al buscar MilitaryBase más reciente: " + e.getMessage());
+            return null;
+        }
+    }
+    /**
+     * Busca un MilitaryBase disponible (no conectado) en el backend
+     */
+    private MilitaryBase findNewMilitaryBase() {
+        if (territory1 == null || territory1.getTownHall() == null) {
+            return null;
+        }
+
+        try {
+            List<dominion.model.buildings.Building> ownedBuildings = territory1.getTownHall().getOwnedBuildings();
+
+            System.out.println("🔍 Buscando MilitaryBase disponible en " + ownedBuildings.size() + " edificios...");
+
+            // Buscar todos los MilitaryBase
+            List<MilitaryBase> allMilitaryBases = new ArrayList<>();
+            for (dominion.model.buildings.Building building : ownedBuildings) {
+                if (building instanceof MilitaryBase) {
+                    allMilitaryBases.add((MilitaryBase) building);
+                }
+            }
+
+            System.out.println("   Total MilitaryBase encontrados: " + allMilitaryBases.size());
+
+            // Encontrar uno que no esté en conexionMilitaryBase
+            for (MilitaryBase mb : allMilitaryBases) {
+                boolean alreadyConnected = false;
+
+                // Verificar si este MilitaryBase ya está conectado a algún cuartel
+                for (MilitaryBase connectedMb : conexionMilitaryBase.values()) {
+                    if (connectedMb == mb) {
+                        alreadyConnected = true;
+                        break;
+                    }
+                }
+
+                if (!alreadyConnected) {
+                    System.out.println("✅ MilitaryBase disponible encontrado: " + mb);
+                    return mb;
+                }
+            }
+
+            // Si no hay disponibles, crear uno nuevo
+            System.out.println("⚠️ No hay MilitaryBase disponible, creando uno nuevo...");
+            boolean created = territory1.getTownHall().createMilitaryBase();
+
+            if (created) {
+                // Buscar el nuevo creado (el último)
+                for (int i = ownedBuildings.size() - 1; i >= 0; i--) {
+                    dominion.model.buildings.Building building = ownedBuildings.get(i);
+                    if (building instanceof MilitaryBase) {
+                        MilitaryBase newMb = (MilitaryBase) building;
+
+                        // Verificar que no sea uno ya conectado
+                        boolean isNew = true;
+                        for (MilitaryBase connectedMb : conexionMilitaryBase.values()) {
+                            if (connectedMb == newMb) {
+                                isNew = false;
+                                break;
+                            }
+                        }
+
+                        if (isNew) {
+                            System.out.println("✅ Nuevo MilitaryBase creado y listo para usar");
+                            return newMb;
+                        }
+                    }
+                }
+            }
+
+            System.out.println("❌ No se pudo encontrar o crear MilitaryBase");
+            return null;
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al buscar MilitaryBase: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Muestra el estado de todas las conexiones de cuarteles
+     */
+    private void debugMilitaryBaseConnections() {
+        System.out.println("\n📊 DEBUG CONEXIONES MILITARY BASE:");
+        System.out.println("==================================");
+
+        if (conexionMilitaryBase.isEmpty()) {
+            System.out.println("❌ No hay conexiones establecidas");
+            return;
+        }
+
+        int i = 1;
+        for (Map.Entry<ImageView, MilitaryBase> entry : conexionMilitaryBase.entrySet()) {
+            System.out.println(i + ". Cuartel: " + entry.getKey().getId() +
+                    " -> MilitaryBase: " + entry.getValue());
+            i++;
+        }
+        System.out.println("==================================\n");
     }
 
     private void createPlaceholderBuilding(double x, double y, double width, double height, String buildingType) {
@@ -5128,11 +5383,11 @@ public class GameApp extends Application {
 
         // Determinar el tipo de construcción para el backend
         if (currentBuildingType.equalsIgnoreCase("Casa")) {
-            buildingTypeForBackend = "HOUSE";
             creado = territory1.getTownHall().createHouse();
         } else if (currentBuildingType.equalsIgnoreCase("Cuartel")) {
-            buildingTypeForBackend = "MILITARY_BASE";
             creado = territory1.getTownHall().createMilitaryBase();
+
+
         }
 
         // Si se crea una construcción exitosamente, asegurar que el Timeline esté corriendo
@@ -6119,8 +6374,13 @@ public class GameApp extends Application {
     }
 
     private void makeBuildingInteractive(ImageView buildingView, String buildingType) {
+        System.out.println("🖱️ Configurando interactividad para: " + buildingType +
+                " - ID: " + buildingView.getId());
+
         buildingView.setOnMouseClicked(e -> {
-            System.out.println("🏠 " + buildingType + " clickeado");
+            System.out.println("🏠 " + buildingType + " clickeado - ID: " + buildingView.getId());
+            System.out.println("📍 Posición del clic: (" + e.getX() + ", " + e.getY() + ")");
+            System.out.println("📍 Posición del edificio: (" + buildingView.getX() + ", " + buildingView.getY() + ")");
 
             // Si es un cuartel, mostrar su menú especial
             if (buildingType.equalsIgnoreCase("Cuartel")) {
@@ -6157,6 +6417,11 @@ public class GameApp extends Application {
                 buildingView.setEffect(shadow);
             }
         });
+
+        // Verificar propiedades
+        System.out.println("✅ Interactividad configurada - " +
+                "MouseTransparent: " + buildingView.isMouseTransparent() +
+                ", PickOnBounds: " + buildingView.isPickOnBounds());
     }
 
     private void centerStage(Stage stage, double width, double height) {
@@ -6880,7 +7145,7 @@ public class GameApp extends Application {
         barracksPopup.setAutoHide(true);
         barracksPopup.setHideOnEscape(true);
 
-        VBox mainPanel = createBarracksPanel();
+        VBox mainPanel = createBarracksPanel(barracksView); // Pasar barracksView
         StackPane container = new StackPane(mainPanel);
 
         double panelWidth = 280;
@@ -6902,7 +7167,7 @@ public class GameApp extends Application {
     /**
      * Crea el panel del Cuartel con el MISMO estilo que el TownHall
      */
-    private VBox createBarracksPanel() {
+    private VBox createBarracksPanel(ImageView barracksView) {
         VBox panel = new VBox(10);
         panel.setAlignment(Pos.TOP_CENTER);
         panel.setPadding(new Insets(20, 20, 20, 20));
@@ -6934,33 +7199,26 @@ public class GameApp extends Application {
         Region separator = new Region();
         separator.setPrefHeight(2);
         separator.setPrefWidth(200);
-        separator.setStyle("-fx-background-color: linear-gradient(to right, transparent, #c0392b, transparent);"); // Rojo para cuartel
+        separator.setStyle("-fx-background-color: linear-gradient(to right, transparent, #c0392b, transparent);");
 
         // Contenedor de botones
         VBox buttonContainer = new VBox(8);
         buttonContainer.setAlignment(Pos.CENTER);
         buttonContainer.setPadding(new Insets(15, 0, 0, 0));
 
-        // Botón para crear caballero
-        Button knightButton = createBarracksButton("♞", "Crear Caballero", "50 Oro");
-
-        knightButton.setOnAction(e -> {
-            System.out.println("♞ Creando Caballero...");
-            barracksPopup.hide();
-            createKnightUnit(barracksPopup);
-        });
+        // Botón para crear caballero - PASAR barracksView al handler
+        Button knightButton = createBarracksButton("♞", "Crear Caballero", "50 Oro", barracksView);
 
         buttonContainer.getChildren().addAll(knightButton);
-
         panel.getChildren().addAll(titleBox, separator, buttonContainer);
 
         return panel;
     }
 
     /**
-     * Crea un botón para el menú del Cuartel con el MISMO estilo que el TownHall
+     * Crea un botón para el menú del Cuartel con handler específico
      */
-    private Button createBarracksButton(String icon, String text, String cost) {
+    private Button createBarracksButton(String icon, String text, String cost, ImageView barracksView) {
         HBox buttonContent = new HBox(10);
         buttonContent.setAlignment(Pos.CENTER_LEFT);
         buttonContent.setPadding(new Insets(8, 15, 8, 15));
@@ -7033,7 +7291,7 @@ public class GameApp extends Application {
             button.setStyle(baseStyle +
                     "-fx-border-color: " + borderColor + ";" +
                     "-fx-border-width: 3; " +
-                    "-fx-background-color: rgba(220, 220, 220, 0.50);"); // 50% opacidad
+                    "-fx-background-color: rgba(220, 220, 220, 0.50);");
         });
 
         button.setOnMouseReleased(e -> {
@@ -7042,7 +7300,121 @@ public class GameApp extends Application {
                     "-fx-border-width: 2;");
         });
 
+        // **HANDLER ESPECÍFICO PARA ESTE CUARTEL**
+        button.setOnAction(e -> {
+            System.out.println("♞ Creando Caballero en cuartel específico: " + barracksView.getId());
+            if (barracksPopup != null) {
+                barracksPopup.hide();
+            }
+            createKnightInSpecificBarracks(barracksView);
+        });
+
         return button;
+    }
+    /**
+     * Crea un caballero en un cuartel específico (versión corregida)
+     */
+    private void createKnightInSpecificBarracks(ImageView specificBarracksView) {
+        try {
+            System.out.println("\n⚔️ INTENTANDO CREAR CABALLERO en cuartel: " + specificBarracksView.getId());
+
+            // **PRIMERO: Verificar la conexión**
+            MilitaryBase militaryBase = conexionMilitaryBase.get(specificBarracksView);
+
+            if (militaryBase == null) {
+                System.out.println("⚠️ No hay conexión establecida para este cuartel. Intentando conectar...");
+
+                // Intentar encontrar o crear el MilitaryBase
+                militaryBase = findNewMilitaryBase();
+
+                if (militaryBase != null) {
+                    // Establecer la conexión ahora
+                    conexionMilitaryBase.put(specificBarracksView, militaryBase);
+                    System.out.println("🔗 Conexión establecida dinámicamente para: " + specificBarracksView.getId());
+                } else {
+                    System.out.println("❌ No se pudo encontrar o crear MilitaryBase en el backend");
+                    return;
+                }
+            }
+
+            // VERIFICACIÓN: ¿Ya hay entrenamiento en curso en ESTA base?
+            boolean trainingInProgress = false;
+            try {
+                // Verificar la cola de entrenamiento directamente
+                if (militaryBase.getTrainingQueue() != null) {
+                    trainingInProgress = !militaryBase.getTrainingQueue().isEmpty();
+                    System.out.println("   Cola de entrenamiento en ESTA base: " +
+                            militaryBase.getTrainingQueue().size() + " unidades");
+                }
+            } catch (Exception e) {
+                System.err.println("⚠️ Error al verificar entrenamiento: " + e.getMessage());
+            }
+
+            // ¡BLOQUEO si ya hay entrenamiento en ESTE cuartel!
+            if (trainingInProgress) {
+                System.out.println("❌ ¡Ya hay un entrenamiento en curso en ESTE cuartel!");
+                showTrainingInProgressAlert();
+                return; // ¡SALIR DEL MÉTODO!
+            }
+
+            // Si NO hay entrenamiento en curso, proceder a crear
+            boolean knightCreated = militaryBase.createKnight();
+
+            if (knightCreated) {
+                System.out.println("✅ Orden de entrenamiento creada en cuartel específico");
+
+                // Obtener la última orden de entrenamiento
+                UnitCreationOrder latestOrder = getLatestTrainingOrder(militaryBase);
+                if (latestOrder != null) {
+                    String unitId = latestOrder.getUnitId();
+
+                    // **GUARDAR INFORMACIÓN COMPLETA con referencia al cuartel específico**
+                    UnitTrainingInfo trainingInfo = new UnitTrainingInfo("caballero", specificBarracksView);
+                    trainingInfo.barracksView = specificBarracksView;
+                    trainingInfo.militaryBase = militaryBase; // Guardar referencia al military base
+                    unitTrainingMap.put(unitId, trainingInfo);
+
+                    // Mostrar entrenamiento en ESTE cuartel específico
+                    showKnightTrainingInProgress(specificBarracksView, unitId);
+
+                    // Forzar sincronización inmediata
+                    Platform.runLater(() -> {
+                        restartConstructionUpdateLoopIfNeeded();
+                        syncCompletedKnights(); // Sincronizar inmediatamente
+                    });
+
+                    // Actualizar recursos
+                    updateResourceDisplay();
+
+                    System.out.println("♞ Entrenamiento iniciado en cuartel específico - ID: " + unitId +
+                            " - Cuartel: " + specificBarracksView.getId());
+                }
+            } else {
+                System.out.println("❌ No se pudo crear caballero (recursos insuficientes)");
+                showInsufficientResourcesForKnight();
+            }
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al crear caballero en cuartel específico: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+    /**
+     * Limpia conexiones de cuarteles que ya no existen
+     */
+    private void cleanupMilitaryBaseConnections() {
+        List<ImageView> toRemove = new ArrayList<>();
+
+        for (ImageView barracksView : conexionMilitaryBase.keySet()) {
+            if (!root.getChildren().contains(barracksView)) {
+                toRemove.add(barracksView);
+            }
+        }
+
+        for (ImageView barracksView : toRemove) {
+            conexionMilitaryBase.remove(barracksView);
+            System.out.println("🧹 Conexión limpiada para cuartel eliminado");
+        }
     }
 
     /**
@@ -7065,111 +7437,7 @@ public class GameApp extends Application {
         javafx.animation.ParallelTransition parallel = new javafx.animation.ParallelTransition(scale, fade);
         parallel.play();
     }
-    /**
-     * Versión compatible con el código existente (1 parámetro)
-     */
-    private void createKnightUnit(Popup barracksPopup) {
-        // Usar null como barracksView específico (buscará el más cercano)
-        createKnightUnit(barracksPopup, null);
-    }
 
-    private void createKnightUnit(Popup barracksPopup, ImageView specificBarracksView) {
-        try {
-            ImageView barracksToUse = specificBarracksView;
-
-            // Si no se proporciona un cuartel específico, buscar el más cercano
-            if (barracksToUse == null) {
-                barracksToUse = findNearestBarracks();
-                if (barracksToUse == null) {
-                    System.out.println("❌ No se encontró ningún cuartel");
-                    return;
-                }
-            }
-
-            System.out.println("♞ Creando caballero en cuartel: " + barracksToUse.getId());
-
-            // Obtener el MilitaryBase del backend
-            MilitaryBase militaryBase = getMilitaryBaseForBarracks(barracksToUse);
-            if (militaryBase == null) {
-                System.out.println("❌ No se encontró MilitaryBase en el backend");
-                return;
-            }
-
-            // VERIFICACIÓN SIMPLE: ¿Ya hay entrenamiento en curso?
-            System.out.println("🔍 Verificando si ya hay entrenamiento en esta base...");
-
-            boolean trainingInProgress = false;
-
-            try {
-                // Intento 1: Verificar la cola de entrenamiento directamente
-                if (militaryBase.getTrainingQueue() != null) {
-                    trainingInProgress = !militaryBase.getTrainingQueue().isEmpty();
-                    System.out.println("   Cola de entrenamiento: " +
-                            militaryBase.getTrainingQueue().size() + " unidades");
-                }
-
-                // Intento 2: Si no funciona el método directo, usar reflexión
-                if (!trainingInProgress) {
-                    try {
-                        java.lang.reflect.Method getQueueMethod = militaryBase.getClass()
-                                .getMethod("getTrainingQueue");
-                        Object queue = getQueueMethod.invoke(militaryBase);
-
-                        if (queue instanceof java.util.Collection) {
-                            trainingInProgress = !((java.util.Collection<?>) queue).isEmpty();
-                            System.out.println("   (via reflexión) Cola: " +
-                                    ((java.util.Collection<?>) queue).size());
-                        }
-                    } catch (Exception e) {
-                        // Método no disponible
-                    }
-                }
-
-            } catch (Exception e) {
-                System.err.println("⚠️ Error al verificar entrenamiento: " + e.getMessage());
-                // Continuar de todos modos
-            }
-
-            // ¡BLOQUEO AQUÍ! Si ya hay entrenamiento, no permitir crear otro
-            if (trainingInProgress) {
-                System.out.println("❌ ¡Ya hay un entrenamiento en curso en este cuartel!");
-                System.out.println("   No se pueden entrenar múltiples unidades a la vez.");
-                showTrainingInProgressAlert();
-
-                return; // ¡SALIR DEL MÉTODO! No crear caballero
-            }
-
-            // Si NO hay entrenamiento en curso, proceder a crear
-            boolean knightCreated = militaryBase.createKnight();
-
-            if (knightCreated) {
-                System.out.println("✅ Orden de entrenamiento creada");
-
-                updateAttackDisplay();
-
-
-                // Obtener orden y continuar con el resto...
-                UnitCreationOrder latestOrder = getLatestTrainingOrder(militaryBase);
-                if (latestOrder != null) {
-                    String unitId = latestOrder.getUnitId();
-                    saveUnitTrainingInfo(unitId, "caballero", barracksToUse);
-                    showKnightTrainingInProgress(barracksToUse, unitId);
-                    restartConstructionUpdateLoopIfNeeded();
-                    updateResourceDisplay();
-
-
-                    System.out.println("♞ Entrenamiento iniciado - ID: " + unitId);
-                }
-            } else {
-                System.out.println("❌ No se pudo crear caballero (recursos insuficientes)");
-                showInsufficientResourcesForKnight();
-            }
-
-        } catch (Exception e) {
-            System.err.println("❌ Error al crear caballero: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
     /**
      * Muestra alerta de entrenamiento en curso con estilo del juego
      */
@@ -7351,27 +7619,37 @@ public class GameApp extends Application {
         String unitType;
         String barracksId;
         ImageView barracksView;
+        MilitaryBase militaryBase; // <-- AÑADIR ESTE CAMPO
         long startTime;
 
         UnitTrainingInfo(String unitType, ImageView barracksView) {
             this.unitType = unitType;
             this.barracksView = barracksView;
+            this.militaryBase = conexionMilitaryBase.get(barracksView); // Obtener el military base
             this.startTime = System.currentTimeMillis();
         }
     }
 
-    // Obtener MilitaryBase del backend para un cuartel específico
+    /**
+     * Obtiene el MilitaryBase correspondiente a un cuartel específico
+     */
     private MilitaryBase getMilitaryBaseForBarracks(ImageView barracksView) {
-        // Asumiendo que hay un MilitaryBase por territorio
-        if (territory1 != null && territory1.getTownHall() != null) {
-            // Buscar MilitaryBase en los edificios del territorio
-            for (Object building : territory1.getTownHall().getOwnedBuildings()) {
-                if (building instanceof MilitaryBase) {
-                    return (MilitaryBase) building;
-                }
-            }
+        return conexionMilitaryBase.get(barracksView);
+    }
+
+    /**
+     * Verifica si hay entrenamiento en curso en un cuartel específico
+     */
+    private boolean isTrainingInProgressForBarracks(ImageView barracksView) {
+        MilitaryBase militaryBase = getMilitaryBaseForBarracks(barracksView);
+        if (militaryBase == null) return false;
+
+        try {
+            return militaryBase.getTrainingQueue() != null &&
+                    !militaryBase.getTrainingQueue().isEmpty();
+        } catch (Exception e) {
+            return false;
         }
-        return null;
     }
 
     // Obtener la orden de entrenamiento más reciente
@@ -7516,43 +7794,6 @@ public class GameApp extends Application {
         return nearestBarracks;
     }
 
-    /**
-     * Crea un caballero cerca de un cuartel específico (versión optimizada)
-     */
-    private boolean createKnightNextToBarracks(ImageView barracksView) {
-        try {
-            if (barracksView == null) {
-                System.out.println("❌ No hay cuartel para crear unidades");
-                return false;
-            }
-
-            double barracksX = barracksView.getX();
-            double barracksY = barracksView.getY();
-            double barracksWidth = barracksView.getFitWidth();
-            double barracksHeight = barracksView.getFitHeight();
-            double knightSize = 50;
-
-            System.out.println("🔍 Buscando posición para caballero cerca del cuartel...");
-
-            // Intentar posiciones en una formación compacta
-            Position validPosition = findPositionForKnightCompact(barracksX, barracksY,
-                    barracksWidth, barracksHeight,
-                    knightSize);
-
-            if (validPosition != null) {
-                createKnightAtPosition("caballero", "Caballero.png", validPosition.x, validPosition.y, knightSize);
-                return true;
-            } else {
-                System.out.println("❌ No se pudo encontrar espacio para el caballero");
-                return false;
-            }
-
-        } catch (Exception e) {
-            System.err.println("❌ Error al crear caballero: " + e.getMessage());
-            e.printStackTrace();
-            return false;
-        }
-    }
 
     private Map<ResourceType, Integer> getKnightCost() {
         return Map.of(ResourceType.GOLD, 80); // Según tu backend
@@ -8278,3 +8519,4 @@ public class GameApp extends Application {
         launch(args);
     }
 }
+
