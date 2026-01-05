@@ -6,12 +6,12 @@
 <?import javafx.scene.image.Image?>
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.effect.DropShadow?>
-<?import javafx.geometry.Insets?> <StackPane xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1"
-                                             fx:controller="com.juego.conquista.principalMenuController">
+<?import javafx.geometry.Insets?> <StackPane xmlns="http://javafx.com/javafx/20" xmlns:fx="http://javafx.com/fxml/1"
+                                             fx:controller="dominion.view.principalMenuController">
 
     <ImageView fx:id="backgroundImageView" pickOnBounds="true" preserveRatio="false">
         <image>
-            <Image url="@fondo.png" />
+            <Image url="@imagenes/fondo.png" />
         </image>
     </ImageView>
 

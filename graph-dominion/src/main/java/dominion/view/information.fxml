@@ -5,11 +5,11 @@
 <?import javafx.scene.text.*?>
 <?import javafx.geometry.Insets?>
 
-<StackPane prefHeight="600.0" prefWidth="800.0" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.juego.conquista.principalMenuController">
+<StackPane prefHeight="600.0" prefWidth="800.0" xmlns="http://javafx.com/javafx/20" xmlns:fx="http://javafx.com/fxml/1" fx:controller="dominion.view.principalMenuController">
 
     <ImageView fx:id="bgInfo" pickOnBounds="true" preserveRatio="false">
         <image>
-            <Image url="@informationPhoto.png" />
+            <Image url="@imagenes/informationPhoto.png"/>
         </image>
     </ImageView>
 

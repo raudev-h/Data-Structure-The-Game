@@ -1,4 +1,4 @@
-package com.juego.conquista;
+package dominion.view;
 
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
@@ -25,7 +25,7 @@ public class principalMenuController {
         Parent root = loader.load();
         Stage stage = (Stage) ((Node) event.getSource()).getScene().getWindow();
 
-        // Esto ajusta la imagen de la pantalla INFO
+
         ImageView bg = (ImageView) root.lookup("#bgInfo");
         if (bg != null) {
             bg.fitWidthProperty().bind(stage.widthProperty());
@@ -41,7 +41,7 @@ public class principalMenuController {
         Parent root = loader.load();
         Stage stage = (Stage) ((Node) event.getSource()).getScene().getWindow();
 
-        // Esto re-ajusta la imagen de la pantalla PRINCIPAL
+       
         ImageView bg = (ImageView) root.lookup("#backgroundImageView");
         if (bg != null) {
             bg.fitWidthProperty().bind(stage.widthProperty());
