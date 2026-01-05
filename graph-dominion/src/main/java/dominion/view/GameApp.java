@@ -6798,7 +6798,7 @@ public class GameApp extends Application {
             int maxAttempts = 500; // Para evitar bucles infinitos
 
             // Intentar crear 15 minas
-            while (minesCreated < 5 && maxAttempts > 0) {
+            while (minesCreated < 9 && maxAttempts > 0) {
                 double x = getRandomPosition(windowWidth, mineSize);
                 double y = getRandomPosition(windowHeight, mineSize);
 
