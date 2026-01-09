@@ -157,7 +157,6 @@ public class Map_Territories extends Pane {
     }
 
 
-
     private void adjustBackgroundPosition(ImageView mapBackground) {
         if (mapBackground.getImage() == null) return;
 
@@ -315,7 +314,7 @@ public class Map_Territories extends Pane {
 
             if (getChildren().indexOf(currentTerritory) + 1 < getChildren().size()) {
                 Label label = (Label) getChildren().get(getChildren().indexOf(currentTerritory) + 1);
-                label.setLayoutX(currentTerritory.getX() + currentTerritory.getFitWidth()/2 - 40);
+                label.setLayoutX(currentTerritory.getX() + currentTerritory.getFitWidth() / 2 - 40);
                 label.setLayoutY(currentTerritory.getY() + currentTerritory.getFitHeight() + 10);
             }
         }
@@ -329,7 +328,7 @@ public class Map_Territories extends Pane {
 
             if (getChildren().indexOf(enemyTerritory1) + 1 < getChildren().size()) {
                 Label label = (Label) getChildren().get(getChildren().indexOf(enemyTerritory1) + 1);
-                label.setLayoutX(enemyTerritory1.getX() + enemyTerritory1.getFitWidth()/2 - 50);
+                label.setLayoutX(enemyTerritory1.getX() + enemyTerritory1.getFitWidth() / 2 - 50);
                 label.setLayoutY(enemyTerritory1.getY() + enemyTerritory1.getFitHeight() + 10);
             }
         }
@@ -343,7 +342,7 @@ public class Map_Territories extends Pane {
 
             if (getChildren().indexOf(enemyTerritory2) + 1 < getChildren().size()) {
                 Label label = (Label) getChildren().get(getChildren().indexOf(enemyTerritory2) + 1);
-                label.setLayoutX(enemyTerritory2.getX() + enemyTerritory2.getFitWidth()/2 - 55);
+                label.setLayoutX(enemyTerritory2.getX() + enemyTerritory2.getFitWidth() / 2 - 55);
                 label.setLayoutY(enemyTerritory2.getY() + enemyTerritory2.getFitHeight() + 10);
             }
         }
@@ -378,12 +377,12 @@ public class Map_Territories extends Pane {
             Territory actual = gameApp.getGameMap().getTerritories().get(territoryNumber);
             boolean puedeAtacar = gameMap.playerCanAttack(principalPlayer, actual);
 
-            if(puedeAtacar) {
+            if (puedeAtacar) {
                 System.out.println("⚔ Atacando " + name + "...");
                 AttackResult attackResult = gameControler.handleAttack(principalPlayer, actual);
-                System.out.println("Attack Result: "+ attackResult + " ---------");
+                System.out.println("Attack Result: " + attackResult + " ---------");
 
-                if(attackResult.equals(AttackResult.VICTORY)){
+                if (attackResult.equals(AttackResult.VICTORY)) {
                     // ¡Victoria! Verificar si es el territorio final (territorio 2)
                     if (territoryNumber == 2) { // Terriotrio final/jefe
                         // Mostrar pantalla de victoria final especial
@@ -432,7 +431,7 @@ public class Map_Territories extends Pane {
                 flash.setCycleCount(2);
                 flash.play();
 
-                if(attackResult.equals(AttackResult.VICTORY) || attackResult.equals(AttackResult.DEFEAT)) {
+                if (attackResult.equals(AttackResult.VICTORY) || attackResult.equals(AttackResult.DEFEAT)) {
                     // Sincronizar caballeros después de la batalla
                     Platform.runLater(() -> {
                         // Pequeño retraso para asegurar que el backend se actualizó
@@ -442,8 +441,7 @@ public class Map_Territories extends Pane {
                         syncDelay.play();
                     });
                 }
-            }
-            else{
+            } else {
                 showNotAdjacentAlert();
 
                 javafx.animation.Timeline errorFlash = new javafx.animation.Timeline(
@@ -894,15 +892,18 @@ public class Map_Territories extends Pane {
                 System.out.println("🚪 Saliendo al menú principal...");
                 hideDefeatScreen();
 
-
                 // Cerrar la ventana principal de GameApp
                 if (gameApp != null) {
                     Platform.runLater(() -> {
-                        // Obtener el Stage principal y cerrarlo
-                        Stage mainStage = (Stage) gameApp.getSceneContainer().getScene().getWindow();
-                        if (mainStage != null) {
-                            mainStage.close();
-                            System.out.println("✅ Ventana principal cerrada");
+                        // Asegurar que GameApp tenga un método para regresar al menú
+                        if (gameApp.getMenuManager() != null) {
+                            gameApp.getMenuManager().returnToMenu();
+                        } else {
+                            // Si no hay MenuManager, cerrar directamente
+                            Stage mainStage = (Stage) gameApp.getSceneContainer().getScene().getWindow();
+                            if (mainStage != null) {
+                                mainStage.close();
+                            }
                         }
                     });
                 }
@@ -1135,8 +1136,8 @@ public class Map_Territories extends Pane {
         return redGlow;
     }
 
-    private int calcularFuerzaTerritorio(int numeroTerritorio){
-        if(numeroTerritorio >= 0 && numeroTerritorio < gameMap.getTerritories().size()) {
+    private int calcularFuerzaTerritorio(int numeroTerritorio) {
+        if (numeroTerritorio >= 0 && numeroTerritorio < gameMap.getTerritories().size()) {
             Territory territory = gameMap.getTerritories().get(numeroTerritorio);
             if (territory != null && territory.getPlayerOwner() != null) {
                 return territory.getPlayerOwner().calculateTotalDefence();
@@ -1264,7 +1265,7 @@ public class Map_Territories extends Pane {
 
         defenseInfoPanel.getChildren().add(defenseLabel);
 
-        double posX = territory.getX() + territory.getFitWidth()/2 - 35;
+        double posX = territory.getX() + territory.getFitWidth() / 2 - 35;
         double posY = territory.getY() - 30;
 
         if (posY < 10) {
@@ -1398,17 +1399,17 @@ public class Map_Territories extends Pane {
     private void createPlaceholderTerritories() {
         double territorySize = getWidth() * 0.1;
 
-        javafx.scene.shape.Circle myTerritory = new javafx.scene.shape.Circle(territorySize/2);
+        javafx.scene.shape.Circle myTerritory = new javafx.scene.shape.Circle(territorySize / 2);
         myTerritory.setFill(Color.rgb(0, 255, 0, 0.7));
         myTerritory.setCenterX(getWidth() * 0.1);
         myTerritory.setCenterY(getHeight() * 0.15);
 
-        javafx.scene.shape.Circle enemy1 = new javafx.scene.shape.Circle(territorySize/2 * 0.9);
+        javafx.scene.shape.Circle enemy1 = new javafx.scene.shape.Circle(territorySize / 2 * 0.9);
         enemy1.setFill(Color.rgb(255, 0, 0, 0.7));
         enemy1.setCenterX(getWidth() * 0.8);
         enemy1.setCenterY(getHeight() * 0.2);
 
-        javafx.scene.shape.Circle enemy2 = new javafx.scene.shape.Circle(territorySize/2);
+        javafx.scene.shape.Circle enemy2 = new javafx.scene.shape.Circle(territorySize / 2);
         enemy2.setFill(Color.rgb(255, 0, 0, 0.7));
         enemy2.setCenterX(getWidth() * 0.75);
         enemy2.setCenterY(getHeight() * 0.5);
@@ -1581,6 +1582,7 @@ public class Map_Territories extends Pane {
             }
         }
     }
+
     /**
      * Muestra la pantalla de victoria del jefe final (territorio 2)
      */
@@ -1829,26 +1831,26 @@ public class Map_Territories extends Pane {
         return button;
     }
 
-    /**
-     * Navega al menú principal cerrando la ventana actual
-     */
     private void goToMainMenu() {
         System.out.println("🚪 Navegando al menú principal...");
 
         // Cerrar la ventana principal de GameApp
         if (gameApp != null) {
             Platform.runLater(() -> {
-                // Obtener el Stage principal y cerrarlo
-                Stage mainStage = (Stage) gameApp.getSceneContainer().getScene().getWindow();
-                if (mainStage != null) {
-                    mainStage.close();
-                    System.out.println("✅ Ventana del juego cerrada");
+                // Primero ocultar la pantalla de victoria
+                hideVictoryScreen();
 
-                    // Aquí podrías abrir la ventana del menú principal si tienes una clase separada
-                    // new MainMenu().start(new Stage());
+                // Usar el MenuManager para regresar al menú
+                if (gameApp.getMenuManager() != null) {
+                    gameApp.getMenuManager().returnToMenu();
+                } else {
+                    // Si no hay MenuManager, cerrar directamente
+                    Stage mainStage = (Stage) gameApp.getSceneContainer().getScene().getWindow();
+                    if (mainStage != null) {
+                        mainStage.close();
+                    }
                 }
             });
         }
     }
-
 }

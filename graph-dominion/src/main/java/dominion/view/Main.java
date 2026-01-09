@@ -1,16 +1,20 @@
 package dominion.view;
 
-import dominion.view.GameApp;
-import dominion.view.MenuManager;
 import javafx.application.Application;
 import javafx.stage.Stage;
-
+import javafx.stage.StageStyle;
 
 public class Main extends Application {
 
     @Override
     public void start(Stage primaryStage) {
         try {
+            // Configurar el stage para pantalla completa sin decoraciones
+            primaryStage.initStyle(StageStyle.UNDECORATED); // Elimina la barra de título
+            primaryStage.setFullScreen(true);
+            primaryStage.setFullScreenExitHint(""); // Sin mensaje de salida
+            primaryStage.setFullScreenExitKeyCombination(null); // Desactiva tecla de salida
+
             // 1. Crear MenuManager primero
             MenuManager menuManager = new MenuManager(primaryStage);
 

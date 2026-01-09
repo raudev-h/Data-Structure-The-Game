@@ -148,6 +148,7 @@ public class MenuManager {
         primaryStage.setScene(scene);
         primaryStage.setFullScreen(true);
         primaryStage.setFullScreenExitHint("");
+
         primaryStage.show();
     }
 
@@ -203,19 +204,48 @@ public class MenuManager {
             fadeOut.setToValue(0.0);
 
             fadeOut.setOnFinished(e -> {
-                // Iniciar el juego en pantalla completa
+                // **LIMPIAR EL GAMEAPP ANTERIOR ANTES DE INICIAR UNO NUEVO**
+                if (gameApp != null) {
+                    try {
+                        // Detener cualquier animación o timer activo
+                        gameApp.cleanupBeforeRestart();
+                    } catch (Exception ex) {
+                        System.err.println("Error limpiando GameApp anterior: " + ex.getMessage());
+                    }
+                }
+
+                // **REINICIAR EL GAMEAPP COMPLETAMENTE**
+                gameApp = new GameApp();
+                gameApp.setMenuManager(this);
+
+                // Iniciar el juego - el stage YA debería estar en pantalla completa
                 gameApp.start(primaryStage);
 
-                // Asegurar que el juego se muestre en pantalla completa
+                // Solo asegurar que el stage esté visible
                 Platform.runLater(() -> {
-                    primaryStage.setFullScreen(true);
-                    primaryStage.setFullScreenExitHint("");
+
+                    if (!primaryStage.isShowing()) {
+                        primaryStage.show();
+                    }
                 });
             });
 
             fadeOut.play();
         } else {
+            // **LIMPIAR EL GAMEAPP ANTERIOR ANTES DE INICIAR UNO NUEVO**
+            if (gameApp != null) {
+                try {
+                    gameApp.cleanupBeforeRestart();
+                } catch (Exception ex) {
+                    System.err.println("Error limpiando GameApp anterior: " + ex.getMessage());
+                }
+            }
+
+            // **REINICIAR EL GAMEAPP COMPLETAMENTE**
+            gameApp = new GameApp();
+            gameApp.setMenuManager(this);
             gameApp.start(primaryStage);
+
             Platform.runLater(() -> {
                 primaryStage.setFullScreen(true);
                 primaryStage.setFullScreenExitHint("");
@@ -277,9 +307,6 @@ public class MenuManager {
         }
     }
 
-    /**
-     * Realiza una transición suave entre dos roots - Versión simplificada
-     */
     private void performSmoothTransition(Parent fromRoot, Parent toRoot) {
         Scene scene = primaryStage.getScene();
 
@@ -290,7 +317,7 @@ public class MenuManager {
             return;
         }
 
-        // Configurar opacidad inicial
+        // Configurar opacidad inicial del nuevo root
         toRoot.setOpacity(0.0);
 
         // Configurar tamaño si es Region
@@ -299,19 +326,29 @@ public class MenuManager {
             region.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
         }
 
-        // Cambiar directamente al nuevo root (pero invisible)
-        scene.setRoot(toRoot);
+        // Primero fade out del root actual
+        FadeTransition fadeOut = new FadeTransition(Duration.millis(300), fromRoot);
+        fadeOut.setFromValue(1.0);
+        fadeOut.setToValue(0.0);
 
-        // Animar fade in
-        FadeTransition fadeIn = new FadeTransition(Duration.millis(400), toRoot);
-        fadeIn.setFromValue(0.0);
-        fadeIn.setToValue(1.0);
+        fadeOut.setOnFinished(e -> {
+            // Cambiar al nuevo root
+            scene.setRoot(toRoot);
 
-        fadeIn.setOnFinished(e -> {
-            primaryStage.setFullScreen(true);
+            // Animar fade in del nuevo root
+            FadeTransition fadeIn = new FadeTransition(Duration.millis(400), toRoot);
+            fadeIn.setFromValue(0.0);
+            fadeIn.setToValue(1.0);
+
+            fadeIn.setOnFinished(e2 -> {
+                primaryStage.setFullScreen(true);
+                System.out.println("✅ Transición completada - Menú principal visible");
+            });
+
+            fadeIn.play();
         });
 
-        fadeIn.play();
+        fadeOut.play();
     }
 
     private void showInformationFallback() {
@@ -421,6 +458,7 @@ public class MenuManager {
      * Vuelve al menú principal desde el juego
      */
     public void returnToMenu() {
+        System.out.println("🔄 Volviendo al menú principal...");
         showMainMenu();
     }
 }

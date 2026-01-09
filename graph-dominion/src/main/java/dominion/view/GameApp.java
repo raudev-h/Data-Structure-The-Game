@@ -136,6 +136,8 @@ public class GameApp extends Application {
     // Constructor
     public GameApp() {
         instance = this;
+
+
     }
 
     // Getter estático para acceder desde otros lugares
@@ -146,16 +148,17 @@ public class GameApp extends Application {
     @Override
     public void start(Stage stage) {
 
+
         // Configurar Conexion con Backend
         gameControler = new GameControler();
         actualPlayer = gameControler.getCurrentPlayer();
         gameMap = gameControler.getGameMap();
         territory1 = actualPlayer.getTerritories().getFirst();
 
-        // 1. Obtener tamaño de pantalla
+        // 1. Obtener tamaño COMPLETO de pantalla para pantalla completa
         Rectangle2D screen = Screen.getPrimary().getVisualBounds();
-        windowWidth = Math.min(screen.getWidth() * 0.9, 1600);
-        windowHeight = Math.min(screen.getHeight() * 0.9, 900);
+        windowWidth = screen.getWidth();  // Usar 100% del ancho
+        windowHeight = screen.getHeight(); // Usar 100% del alto
 
         // 2. Crear contenedor principal CON ESCENA
         root = new Pane();
@@ -206,7 +209,9 @@ public class GameApp extends Application {
         // 11. Configurar el stage
         stage.setTitle("Dominion");
         stage.setScene(mainScene);
+
         centerStage(stage, windowWidth, windowHeight);
+
         stage.show();
 
         // 12. Configurar el listener del timer para manejar pausa
@@ -377,7 +382,7 @@ public class GameApp extends Application {
      */
     private void setupConquerButtonTimer() {
         conquerButtonTimer = new Timeline(
-                new KeyFrame(Duration.seconds(300), e -> showConquerButton())
+                new KeyFrame(Duration.seconds(1), e -> showConquerButton())
         );
         conquerButtonTimer.setCycleCount(1); // Solo una vez
         conquerButtonTimer.play();
@@ -635,32 +640,65 @@ public class GameApp extends Application {
     }
 
     public void returnToMenu() {
-
+        System.out.println( "Intentando ir al menu");
         if (menuManager == null) {
             System.err.println("❌ menuManager es null!");
+            // Intentar obtener el MenuManager del Stage
+            try {
+                Stage stage = (Stage) root.getScene().getWindow();
+                Object userData = stage.getUserData();
+                if (userData instanceof MenuManager) {
+                    menuManager = (MenuManager) userData;
+                }
+            } catch (Exception e) {
+                System.err.println("❌ No se pudo recuperar menuManager: " + e.getMessage());
+                return;
+            }
+        }
+
+        if (menuManager == null) {
+            System.err.println("❌ menuManager sigue siendo null!");
             return;
         }
-        System.out.println("🔄 Volviendo al menú principal...");
 
-        if (menuManager != null) {
-            // Obtener el stage
-            Stage stage = (Stage) root.getScene().getWindow();
+        System.out.println("🔄 Volviendo al menú principal con transición suave...");
 
-            // Cerrar completamente esta ventana
-            stage.close();
+        // 1. Limpiar todas las tareas y animaciones activas
+        cleanupAllTasks();
 
-            // Crear un NUEVO stage para el menú
-            Platform.runLater(() -> {
-                Stage newStage = new Stage();
-                newStage.setTitle("Dominion");
-                newStage.setFullScreen(true);
-                newStage.setFullScreenExitHint("");
+        // 2. Detener el ciclo de construcciones
+        stopConstructionUpdateLoop();
 
-                // Reiniciar el menuManager con el nuevo stage
-                MenuManager newMenuManager = new MenuManager(newStage);
-                newMenuManager.showMainMenu();
-            });
+        // 3. Detener el timer del juego si existe
+        if (gameTimer != null) {
+            gameTimer.pauseTimer(); ;
         }
+
+        // 4. Ocultar la interfaz del juego con animación de fade out
+        if (sceneContainer != null) {
+            FadeTransition fadeOut = new FadeTransition(Duration.millis(500), sceneContainer);
+            fadeOut.setFromValue(1.0);
+            fadeOut.setToValue(0.0);
+
+            fadeOut.setOnFinished(e -> {
+                // 5. Solicitar al MenuManager que muestre el menú principal
+                menuManager.showMainMenu();
+
+                // 6. Asegurar que el stage esté en pantalla completa
+                Platform.runLater(() -> {
+                    Stage stage = (Stage) root.getScene().getWindow();
+                    stage.setFullScreen(true);
+                    stage.setFullScreenExitHint("");
+                });
+            });
+
+            fadeOut.play();
+        } else {
+            // Si no hay contenedor de escenas, ir directamente al menú
+            menuManager.showMainMenu();
+        }
+
+        System.out.println("✅ Transición al menú iniciada");
     }
 
     /**
@@ -5108,6 +5146,7 @@ public class GameApp extends Application {
             territory1.setTownHall(townHall1);
             territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, 200);
 
+
             DropShadow glow = new DropShadow();
             glow.setColor(Color.rgb(255, 215, 0, 0.7));
             glow.setRadius(15);
@@ -8237,7 +8276,7 @@ public class GameApp extends Application {
         Label titleLabel = new Label("Recursos insuficientes");
         titleLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #c0392b;");
 
-        Label detailLabel = new Label("Necesitas 80 Oro \npara crear un Caballero");
+        Label detailLabel = new Label("Necesitas 50 Oro \npara crear un Caballero");
         detailLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #000000; -fx-text-alignment: center;");
         detailLabel.setWrapText(true);
 
@@ -8594,6 +8633,108 @@ public class GameApp extends Application {
         }
 
         System.out.println("💀 " + knightsToRemove + " caballeros marcados para eliminación");
+    }
+
+    /**
+     * Método para limpiar completamente el juego antes de reiniciarlo
+     */
+    public void cleanupBeforeRestart() {
+        System.out.println("🧹 Limpiando GameApp antes de reinicio...");
+
+        // 1. Limpiar todas las tareas activas
+        cleanupAllTasks();
+
+        // 2. Detener el ciclo de construcciones
+        stopConstructionUpdateLoop();
+
+        // 3. Detener el timer
+        if (gameTimer != null) {
+            gameTimer.pauseTimer();
+            gameTimer = null;
+        }
+
+        // 4. Limpiar todas las animaciones y timelines
+        if (constructionUpdateTimeline != null) {
+            constructionUpdateTimeline.stop();
+            constructionUpdateTimeline = null;
+        }
+
+        // 5. Limpiar el overlay de pausa
+        if (pauseOverlay != null) {
+            pauseOverlay = null;
+        }
+
+        // 6. Resetear estado de pausa
+        isGamePaused = false;
+
+        // 7. Limpiar listas y mapas
+        selectedUnitViews.clear();
+        activeMiningTasks.clear();
+        activeWoodcuttingTasks.clear();
+        constructionVisuals.clear();
+        buildingTypesUnderConstruction.clear();
+        buildingPositions.clear();
+        conexionMilitaryBase.clear();
+        createdKnights.clear();
+        unitTrainingMap.clear();
+        placedBuildings.clear();
+
+        // 8. Resetear managers
+        barraProgresoManager = new BarraProgresoAnimadaManager();
+
+        // 9. Resetear conquistados
+        conqueredTerritories.clear();
+
+        // 10. Cerrar cualquier popup abierto
+        if (townHallPopup != null) {
+            townHallPopup.hide();
+            townHallPopup = null;
+        }
+
+        if (barracksPopup != null) {
+            barracksPopup.hide();
+            barracksPopup = null;
+        }
+
+        System.out.println("✅ GameApp limpiado completamente");
+    }
+
+    /**
+     * Método para resetear el sistema de pausa
+     */
+    public void resetPauseSystem() {
+        System.out.println("🔄 Reseteando sistema de pausa...");
+
+        isGamePaused = false;
+        pauseOverlay = null;
+
+        // Resetear los handlers de mouse guardados
+        savedMousePressed = null;
+        savedMouseDragged = null;
+        savedMouseReleased = null;
+
+        System.out.println("✅ Sistema de pausa reseteado");
+    }
+
+    /**
+     * Método para inicializar el sistema de pausa (llamado desde start())
+     */
+    private void initPauseSystem() {
+        System.out.println("🔧 Inicializando sistema de pausa...");
+
+        isGamePaused = false;
+        pauseOverlay = null;
+
+        // Limpiar cualquier overlay existente
+        if (sceneContainer != null) {
+            for (Node node : new ArrayList<>(sceneContainer.getChildren())) {
+                if (node instanceof StackPane && node != root) {
+                    sceneContainer.getChildren().remove(node);
+                }
+            }
+        }
+
+        System.out.println("✅ Sistema de pausa inicializado");
     }
 
     public static void main(String[] args) {
