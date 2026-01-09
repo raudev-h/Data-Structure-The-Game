@@ -1017,11 +1017,16 @@ public class GameApp extends Application {
             woodcutter.setTranslateY(0);
         }
 
-        // Obtener posición alrededor del árbol
+        // Obtener posición EXACTA del árbol
         double treeX = tree.getX();
         double treeY = tree.getY();
         double treeWidth = tree.getFitWidth();
         double treeHeight = tree.getFitHeight();
+
+        // Imprimir información de depuración
+        System.out.println("🎯 Árbol objetivo: " + tree.getId());
+        System.out.println("📍 Posición: (" + (int)treeX + ", " + (int)treeY + ")");
+        System.out.println("📏 Tamaño: " + (int)treeWidth + "x" + (int)treeHeight);
 
         // Calcular formación alrededor del árbol
         moveWoodcuttersToTree(woodcuttersToProcess, treeX, treeY, treeWidth, treeHeight);
@@ -1029,9 +1034,80 @@ public class GameApp extends Application {
         // Iniciar tala para cada leñador
         for (ImageView woodcutter : woodcuttersToProcess) {
             startWoodcutting(woodcutter, tree);
+
+            // Añadir efecto visual para identificar qué árbol está talando
+            addTreeTargetEffect(woodcutter, tree);
         }
 
         System.out.println("🪓 " + woodcuttersToProcess.size() + " leñadores enviados a talar (ya deseleccionados)");
+    }
+
+    /**
+     * Añade un efecto visual para identificar qué árbol está siendo talado
+     */
+    /**
+     * Añade un efecto visual para identificar qué árbol está siendo talado
+     */
+    private void addTreeTargetEffect(ImageView woodcutter, ImageView tree) {
+        // Crear un círculo de destino alrededor del árbol
+        javafx.scene.shape.Circle targetCircle = new javafx.scene.shape.Circle();
+        targetCircle.setCenterX(tree.getX() + tree.getFitWidth() / 2);
+        targetCircle.setCenterY(tree.getY() + tree.getFitHeight() / 2);
+        targetCircle.setRadius(Math.max(tree.getFitWidth(), tree.getFitHeight()) / 2 + 10);
+        targetCircle.setFill(Color.TRANSPARENT);
+        targetCircle.setStroke(Color.rgb(255, 255, 0, 0.7));
+        targetCircle.setStrokeWidth(2);
+
+        // CORRECCIÓN: Usar el método correcto para línea discontinua
+        targetCircle.getStrokeDashArray().addAll(5.0, 5.0);
+
+        targetCircle.setId("target_circle_" + tree.getId() + "_" + woodcutter.getId());
+
+        root.getChildren().add(targetCircle);
+
+        // Animación pulsante
+        Timeline pulse = new Timeline(
+                new KeyFrame(Duration.ZERO,
+                        new KeyValue(targetCircle.strokeWidthProperty(), 2),
+                        new KeyValue(targetCircle.opacityProperty(), 0.7)
+                ),
+                new KeyFrame(Duration.seconds(1),
+                        new KeyValue(targetCircle.strokeWidthProperty(), 4),
+                        new KeyValue(targetCircle.opacityProperty(), 0.3)
+                ),
+                new KeyFrame(Duration.seconds(2),
+                        new KeyValue(targetCircle.strokeWidthProperty(), 2),
+                        new KeyValue(targetCircle.opacityProperty(), 0.7)
+                )
+        );
+        pulse.setCycleCount(Timeline.INDEFINITE);
+        pulse.play();
+
+        // Guardar referencia para poder removerla después
+        tree.getProperties().put("targetCircle_" + woodcutter.getId(), targetCircle);
+        tree.getProperties().put("targetPulse_" + woodcutter.getId(), pulse);
+    }
+
+    /**
+     * Remueve el efecto visual cuando el leñador deja de talar
+     */
+    private void removeTreeTargetEffect(ImageView woodcutter, ImageView tree) {
+        Circle targetCircle = (Circle) tree.getProperties().get("targetCircle_" + woodcutter.getId());
+        Timeline pulse = (Timeline) tree.getProperties().get("targetPulse_" + woodcutter.getId());
+
+        if (targetCircle != null) {
+            if (pulse != null) {
+                pulse.stop();
+            }
+
+            FadeTransition fadeOut = new FadeTransition(Duration.millis(500), targetCircle);
+            fadeOut.setToValue(0);
+            fadeOut.setOnFinished(e -> root.getChildren().remove(targetCircle));
+            fadeOut.play();
+
+            tree.getProperties().remove("targetCircle_" + woodcutter.getId());
+            tree.getProperties().remove("targetPulse_" + woodcutter.getId());
+        }
     }
 
     private boolean isWoodcutter(ImageView unit) {
@@ -1046,12 +1122,16 @@ public class GameApp extends Application {
         int count = woodcutters.size();
         double treeCenterX = treeX + treeWidth / 2;
         double treeCenterY = treeY + treeHeight / 2;
-        double baseRadius = Math.max(treeWidth, treeHeight) / 2 + 60;
+
+        // Reducir la distancia: más cerca del árbol (30-50px en lugar de 60+)
+        double baseRadius = Math.max(treeWidth, treeHeight) / 2 + 30; // Reducido de 60 a 30
 
         // Contar leñadores existentes en ESTE árbol específico
         int existingWoodcuttersOnThisTree = 0;
         for (WoodcuttingTask task : activeWoodcuttingTasks.values()) {
-            if (task.tree != null && task.tree.getX() == treeX && task.tree.getY() == treeY) {
+            if (task.tree != null &&
+                    Math.abs(task.tree.getX() - treeX) < 5 &&
+                    Math.abs(task.tree.getY() - treeY) < 5) {
                 existingWoodcuttersOnThisTree++;
             }
         }
@@ -1067,26 +1147,94 @@ public class GameApp extends Application {
             }
         }
 
-        // Ajustar radio según cuántos leñadores ya hay
-        double radius = baseRadius + (existingWoodcuttersOnThisTree * 20);
+        // Ajustar radio según cuántos leñadores ya hay (menor incremento)
+        double radius = baseRadius + (existingWoodcuttersOnThisTree * 10); // Reducido de 20 a 10
 
         for (int i = 0; i < count; i++) {
             // Calcular ángulo inicial basado en leñadores existentes
-            double startAngle = (existingWoodcuttersOnThisTree * 90) % 360; // Desplazar 90° por cada leñador existente
+            double startAngle = (existingWoodcuttersOnThisTree * 90) % 360;
             double angle = Math.toRadians(startAngle + (i * (360.0 / count)));
 
-            double targetX = treeCenterX + Math.cos(angle) * radius - 50 / 2;
-            double targetY = treeCenterY + Math.sin(angle) * radius - 50 / 2;
+            // Calcular posición más precisa
+            double targetX = treeCenterX + Math.cos(angle) * radius - 25; // Ajustado para centro del leñador
+            double targetY = treeCenterY + Math.sin(angle) * radius - 25;
 
             // Asegurar que está dentro de los límites
             targetX = Math.max(0, Math.min(targetX, windowWidth - 50));
             targetY = Math.max(0, Math.min(targetY, windowHeight - 50));
 
+            // Verificar que no esté demasiado cerca de otros árboles
+            targetX = avoidOtherTrees(targetX, targetY, treeX, treeY);
+
             animateMove(woodcutters.get(i), targetX, targetY);
+
+            // Marcar visualmente qué árbol está talando
+            markWoodcutterTarget(woodcutters.get(i), treeCenterX, treeCenterY);
         }
 
-        System.out.println("🪓 Moviendo " + count + " leñadores al árbol (ya hay " +
-                existingWoodcuttersOnThisTree + " trabajando)");
+        System.out.println("🪓 Moviendo " + count + " leñadores al árbol en (" +
+                (int)treeCenterX + ", " + (int)treeCenterY + ")");
+    }
+
+    /**
+     * Muestra una línea visual entre el leñador y el árbol que está talando
+     */
+    private void markWoodcutterTarget(ImageView woodcutter, double treeCenterX, double treeCenterY) {
+        // Crear una línea temporal entre el leñador y el árbol
+        double woodcutterX = woodcutter.getX() + woodcutter.getFitWidth() / 2;
+        double woodcutterY = woodcutter.getY() + woodcutter.getFitHeight() / 2;
+
+        javafx.scene.shape.Line targetLine = new javafx.scene.shape.Line(
+                woodcutterX, woodcutterY, treeCenterX, treeCenterY
+        );
+        targetLine.setStroke(Color.rgb(0, 255, 0, 0.5));
+        targetLine.setStrokeWidth(1);
+
+        // CORRECCIÓN: Usar el método correcto
+        targetLine.getStrokeDashArray().addAll(5.0, 5.0);
+
+        targetLine.setId("target_line_" + woodcutter.getId());
+
+        root.getChildren().add(targetLine);
+
+        // Remover la línea después de un tiempo
+        Timeline removeLine = new Timeline(
+                new KeyFrame(Duration.seconds(1), e -> root.getChildren().remove(targetLine))
+        );
+        removeLine.play();
+    }
+
+    /**
+     * Ajusta la posición para evitar que el leñador se coloque cerca de otros árboles
+     */
+    private double avoidOtherTrees(double x, double y, double targetTreeX, double targetTreeY) {
+        double minDistanceToOtherTrees = 40; // Distancia mínima a otros árboles
+
+        for (Node node : root.getChildren()) {
+            if (node instanceof ImageView imageView) {
+                if (imageView.getId() != null && imageView.getId().startsWith("Arbol_")) {
+                    double otherTreeX = imageView.getX();
+                    double otherTreeY = imageView.getY();
+
+                    // Si no es el árbol objetivo
+                    if (Math.abs(otherTreeX - targetTreeX) > 5 || Math.abs(otherTreeY - targetTreeY) > 5) {
+                        double distance = Math.sqrt(
+                                Math.pow(x - otherTreeX, 2) + Math.pow(y - otherTreeY, 2)
+                        );
+
+                        // Si está demasiado cerca de otro árbol, ajustar posición
+                        if (distance < minDistanceToOtherTrees) {
+                            // Mover lejos del otro árbol
+                            double angle = Math.atan2(y - otherTreeY, x - otherTreeX);
+                            x = otherTreeX + Math.cos(angle) * minDistanceToOtherTrees;
+                            y = otherTreeY + Math.sin(angle) * minDistanceToOtherTrees;
+                        }
+                    }
+                }
+            }
+        }
+
+        return x;
     }
     /**
      * Encuentra una mina en las coordenadas dadas (x, y)
@@ -1290,19 +1438,39 @@ public class GameApp extends Application {
     }
 
 
-    // Método para obtener un árbol en las coordenadas dadas
     private ImageView getTreeAt(double x, double y) {
+        ImageView closestTree = null;
+        double closestDistance = Double.MAX_VALUE;
+
         for (Node node : root.getChildren()) {
             if (node instanceof ImageView imageView) {
                 if (imageView.getId() != null && imageView.getId().startsWith("Arbol_")) {
                     Bounds bounds = imageView.getBoundsInParent();
-                    if (bounds.contains(x, y)) {
-                        return imageView;
+                    double centerX = bounds.getMinX() + bounds.getWidth() / 2;
+                    double centerY = bounds.getMinY() + bounds.getHeight() / 2;
+
+                    // Calcular distancia al centro del árbol
+                    double distance = Math.sqrt(
+                            Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2)
+                    );
+
+                    // Si el clic está dentro del árbol o muy cerca
+                    if (bounds.contains(x, y) || distance < Math.max(bounds.getWidth(), bounds.getHeight())) {
+                        if (distance < closestDistance) {
+                            closestDistance = distance;
+                            closestTree = imageView;
+                        }
                     }
                 }
             }
         }
-        return null;
+
+        if (closestTree != null) {
+            System.out.println("🌳 Árbol encontrado: " + closestTree.getId() +
+                    " a distancia: " + (int)closestDistance + "px");
+        }
+
+        return closestTree;
     }
 
     private void sendSelectedMinersToMine(ImageView mine) {
@@ -2313,6 +2481,9 @@ public class GameApp extends Application {
 
     private void removeTree(WoodcuttingTask task) {
         if (task.tree != null && root.getChildren().contains(task.tree)) {
+            // Primero: Remover TODOS los efectos visuales asociados a este árbol
+            removeAllTreeEffects(task.tree);
+
             // Marcar como completamente agotado
             task.tree.getProperties().put("remainingCycles", 0);
 
@@ -2339,10 +2510,8 @@ public class GameApp extends Application {
                 root.getChildren().remove(task.tree);
                 System.out.println("🌳 Árbol " + task.tree.getId() + " talado y removido");
 
-
-                // Opcional: Programar regeneración del árbol
-                // scheduleTreeRegeneration(task.tree.getId(), task.tree.getX(), task.tree.getY(),
-                //                          task.tree.getFitWidth(), 300); // 5 minutos
+                // También remover cualquier efecto visual que quede
+                removeAllTreeEffects(task.tree);
             });
 
             fadeOut.play();
@@ -2350,6 +2519,58 @@ public class GameApp extends Application {
             // Remover la tarea del mapa
             activeWoodcuttingTasks.remove(task.woodcutter);
         }
+    }
+
+    /**
+     * Remueve todos los efectos visuales asociados a un árbol específico
+     */
+    private void removeAllTreeEffects(ImageView tree) {
+        // Buscar y remover todos los círculos de destino asociados a este árbol
+        List<Node> effectsToRemove = new ArrayList<>();
+
+        for (Node node : root.getChildren()) {
+            if (node instanceof javafx.scene.shape.Circle circle) {
+                String circleId = circle.getId();
+                if (circleId != null && circleId.contains(tree.getId())) {
+                    effectsToRemove.add(node);
+
+                    // Detener cualquier animación asociada
+                    Object pulseProperty = tree.getProperties().get("targetPulse_" + extractWoodcutterIdFromCircle(circleId));
+                    if (pulseProperty instanceof Timeline pulse) {
+                        pulse.stop();
+                    }
+                }
+            }
+        }
+
+        // Remover todos los efectos encontrados
+        for (Node effect : effectsToRemove) {
+            root.getChildren().remove(effect);
+        }
+
+        // Limpiar propiedades del árbol
+        tree.getProperties().keySet().removeIf(key ->
+                key.toString().startsWith("targetCircle_") ||
+                        key.toString().startsWith("targetPulse_")
+        );
+
+        if (!effectsToRemove.isEmpty()) {
+            System.out.println("🧹 Removidos " + effectsToRemove.size() + " efectos visuales del árbol " + tree.getId());
+        }
+    }
+
+    /**
+     * Extrae el ID del leñador del ID del círculo
+     */
+    private String extractWoodcutterIdFromCircle(String circleId) {
+        if (circleId == null) return "";
+
+        // El formato es: target_circle_[treeId]_[woodcutterId]
+        String[] parts = circleId.split("_");
+        if (parts.length >= 4) {
+            return parts[parts.length - 1]; // Última parte es el ID del leñador
+        }
+        return "";
     }
 
     private void stopAllTasksForTree(ImageView tree) {
@@ -2361,6 +2582,10 @@ public class GameApp extends Application {
                 if (entry.getValue().collectionTimeline != null) {
                     entry.getValue().collectionTimeline.stop();
                 }
+
+                // Remover efecto visual de ESTE leñador específico
+                removeTreeTargetEffect(entry.getKey(), tree);
+
                 toRemove.add(entry.getKey());
             }
         }
