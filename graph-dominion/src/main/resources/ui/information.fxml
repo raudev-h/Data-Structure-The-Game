@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.image.*?>
+<?import javafx.scene.text.*?>
+<?import javafx.geometry.Insets?>
+
+<StackPane prefHeight="600.0" prefWidth="800.0" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="dominion.view.menuController">
+
+    <ImageView fx:id="bgInfo" pickOnBounds="true" preserveRatio="false">
+        <image>
+            <Image url="@../imagenes/informationPhoto.png" />
+        </image>
+    </ImageView>
+
+    <Region style="-fx-background-color: rgba(0, 0, 0, 0.7);" />
+
+    <VBox alignment="CENTER" spacing="25.0" maxWidth="900.0">
+        <padding>
+            <Insets top="40" right="50" bottom="80" left="50"/>
+        </padding>
+
+        <Label text="🎮 INFORMACION 🎯" textFill="#2ecc71">
+            <font>
+                <Font name="System Bold" size="45.0" />
+            </font>
+        </Label>
+
+        <Label text="Te enfrentas a un juego de estrategia para un solo jugador cuyo objetivo es lograr la conquista total de todos los territorios del mapa. El entorno de juego está estructurado como un conjunto de territorios interconectados mediante un grafo, donde cada nodo representa un territorio y cada conexión define posibles rutas de expansión."
+               textFill="WHITE" wrapText="true" textAlignment="JUSTIFY" lineSpacing="5.0">
+            <font>
+                <Font size="18.0" />
+            </font>
+        </Label>
+
+        <Label text="Debes gestionar de manera eficiente los recursos disponibles, asignándolos estratégicamente entre el desarrollo económico y el fortalecimiento militar. La conquista de territorios enemigos se realiza mediante combates estratégicos, en los que tus decisiones temporales y tácticas influyen directamente en el resultado."
+               textFill="WHITE" wrapText="true" textAlignment="JUSTIFY" lineSpacing="5.0">
+            <font>
+                <Font size="18.0" />
+            </font>
+        </Label>
+
+        <Label text="El progreso del juego depende de tu capacidad para analizar el estado del mapa, optimizar el uso de recursos y seleccionar el momento adecuado para atacar. La partida se extiende hasta que logras la dominación completa del mapa, ofreciendo una experiencia variable basada en tu estrategia y toma de decisiones."
+               textFill="WHITE" wrapText="true" textAlignment="JUSTIFY" lineSpacing="5.0">
+            <font>
+                <Font size="18.0" />
+            </font>
+        </Label>
+    </VBox>
+
+    <AnchorPane pickOnBounds="false">
+        <Button text="VOLVER AL MENÚ" onAction="#volverMenu"
+                AnchorPane.bottomAnchor="30.0" AnchorPane.rightAnchor="30.0"
+                style="-fx-background-color: #ffffff; -fx-text-fill: #2c3e50; -fx-font-weight: bold; -fx-padding: 12 25; -fx-background-radius: 8; -fx-cursor: hand;"/>
+    </AnchorPane>
+
+</StackPane>

@@ -894,6 +894,7 @@ public class Map_Territories extends Pane {
                 System.out.println("🚪 Saliendo al menú principal...");
                 hideDefeatScreen();
 
+
                 // Cerrar la ventana principal de GameApp
                 if (gameApp != null) {
                     Platform.runLater(() -> {

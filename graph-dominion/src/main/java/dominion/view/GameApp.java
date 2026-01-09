@@ -56,8 +56,6 @@ public class GameApp extends Application {
 
 
     // ==================== BOTÓN DE CONQUISTA ====================
-    // ==================== BOTÓN DE CONQUISTA ====================
-    // ==================== BOTÓN DE CONQUISTA ====================
     private VBox conquerButtonPanel;  // Panel del botón de conquista
     private boolean conquerButtonShown = false;
     private Timeline conquerButtonTimer;  // Timer para mostrar el botón
@@ -65,6 +63,10 @@ public class GameApp extends Application {
 
     private static final Set<Integer> conqueredTerritories = new HashSet<>();
     private LinkedHashMap<ImageView, MilitaryBase> conexionMilitaryBase= new LinkedHashMap<>();
+
+    // Añade estos campos
+    private MenuManager menuManager;
+    private static GameApp instance;
 
 
 
@@ -129,6 +131,17 @@ public class GameApp extends Application {
     private StackPane sceneContainer; // Contenedor principal para cambiar escenas
     private Scene mainScene; // La escena principal del juego
     private Map_Territories conquestMap; // Referencia al mapa de conquista
+
+
+    // Constructor
+    public GameApp() {
+        instance = this;
+    }
+
+    // Getter estático para acceder desde otros lugares
+    public static GameApp getInstance() {
+        return instance;
+    }
 
     @Override
     public void start(Stage stage) {
@@ -302,6 +315,32 @@ public class GameApp extends Application {
             System.err.println("❌ Error al abrir el mapa de conquista: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    // Setter para el MenuManager
+    public void setMenuManager(MenuManager menuManager) {
+        this.menuManager = menuManager;
+        System.out.println("✅ MenuManager configurado en GameApp");
+    }
+
+    // Método para obtener el MenuManager (con verificación)
+    public MenuManager getMenuManager() {
+        if (menuManager == null) {
+            System.err.println("⚠️ menuManager es null! Intentando recuperar...");
+            // Intentar obtenerlo del stage
+            try {
+                if (root != null && root.getScene() != null) {
+                    Stage stage = (Stage) root.getScene().getWindow();
+                    Object userData = stage.getUserData();
+                    if (userData instanceof MenuManager) {
+                        menuManager = (MenuManager) userData;
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("❌ No se pudo recuperar menuManager: " + e.getMessage());
+            }
+        }
+        return menuManager;
     }
 
     /**
@@ -593,6 +632,35 @@ public class GameApp extends Application {
         ParallelTransition entrance = new ParallelTransition(scale, fade);
         entrance.setOnFinished(e -> pulse.play());
         entrance.play();
+    }
+
+    public void returnToMenu() {
+
+        if (menuManager == null) {
+            System.err.println("❌ menuManager es null!");
+            return;
+        }
+        System.out.println("🔄 Volviendo al menú principal...");
+
+        if (menuManager != null) {
+            // Obtener el stage
+            Stage stage = (Stage) root.getScene().getWindow();
+
+            // Cerrar completamente esta ventana
+            stage.close();
+
+            // Crear un NUEVO stage para el menú
+            Platform.runLater(() -> {
+                Stage newStage = new Stage();
+                newStage.setTitle("Dominion");
+                newStage.setFullScreen(true);
+                newStage.setFullScreenExitHint("");
+
+                // Reiniciar el menuManager con el nuevo stage
+                MenuManager newMenuManager = new MenuManager(newStage);
+                newMenuManager.showMainMenu();
+            });
+        }
     }
 
     /**
@@ -4210,12 +4278,11 @@ public class GameApp extends Application {
             }
         });
 
-        // Botón Salir al Menú
+        // Botón Salir al Menú (MODIFICADO)
         Button exitButton = createPauseButton("🚪 Salir al Menú");
         exitButton.setOnAction(e -> {
             System.out.println("Saliendo al menú principal...");
-            Stage stage = (Stage) root.getScene().getWindow();
-            stage.close();
+            returnToMenu();
         });
 
         buttonContainer.getChildren().addAll(resumeButton, exitButton);
