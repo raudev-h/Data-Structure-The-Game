@@ -29,7 +29,10 @@ import javafx.scene.shape.Circle;
 import javafx.scene.shape.Rectangle;
 import javafx.stage.*;
 import javafx.util.Duration;
-
+import javafx.scene.media.Media;
+import javafx.scene.media.MediaPlayer;
+import java.io.File;
+import java.io.File;
 import java.util.*;
 
 public class GameApp extends Application {
@@ -382,7 +385,7 @@ public class GameApp extends Application {
      */
     private void setupConquerButtonTimer() {
         conquerButtonTimer = new Timeline(
-                new KeyFrame(Duration.seconds(1), e -> showConquerButton())
+                new KeyFrame(Duration.seconds(300), e -> showConquerButton())
         );
         conquerButtonTimer.setCycleCount(1); // Solo una vez
         conquerButtonTimer.play();
@@ -1681,6 +1684,7 @@ public class GameApp extends Application {
         if (territory1 != null && territory1.getTownHall() != null) {
             territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, oroPorMiner);
             task.goldCollected += oroPorMiner;
+            playGoldSound();
 
             Platform.runLater(() -> updateResourceDisplay());
             showGoldCollectionEffect(task.miner, task.mine, oroPorMiner);
@@ -1724,10 +1728,11 @@ public class GameApp extends Application {
         if (territory1 != null && territory1.getTownHall() != null) {
             // 1. Dar oro al TownHall (50 total por ciclo)
             territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, oroTotalCiclo);
-
+            playGoldSound();
             // 2. Dar el resto extra si hay
             if (resto > 0) {
                 territory1.getTownHall().getStoredResources().addResource(ResourceType.GOLD, resto);
+                playGoldSound();
             }
 
             // 3. Actualizar estado de la mina
@@ -2261,6 +2266,7 @@ public class GameApp extends Application {
 
         if (territory1 != null && territory1.getTownHall() != null) {
             territory1.getTownHall().getStoredResources().addResource(ResourceType.WOOD, maderaPorLeñador);
+            playWoodSound();
             task.woodCollected += maderaPorLeñador;
 
             Platform.runLater(() -> updateResourceDisplay());
@@ -2308,10 +2314,11 @@ public class GameApp extends Application {
 
             // OPCIÓN A: Dar TODO al TownHall de una vez
             territory1.getTownHall().getStoredResources().addResource(ResourceType.WOOD, maderaTotalCiclo);
-
+            playWoodSound();
             // OPCIÓN B: Dar el resto extra
             if (resto > 0) {
                 territory1.getTownHall().getStoredResources().addResource(ResourceType.WOOD, resto);
+                playWoodSound();
             }
 
             // 2. Actualizar estado del árbol
@@ -2652,6 +2659,9 @@ public class GameApp extends Application {
 
                 // Guardar el estado actual ANTES de detener
                 if (task.tree != null) {
+                    // Remover efecto visual
+                    removeTreeTargetEffect(woodcutter, task.tree);
+
                     // El estado ya está actualizado en las propiedades del recurso
                     System.out.println("💾 Guardando estado del árbol: " +
                             task.treeRemainingCycles + " ciclos restantes");
@@ -8960,6 +8970,106 @@ public class GameApp extends Application {
         }
 
         System.out.println("✅ Sistema de pausa inicializado");
+    }
+
+    // ==================== SISTEMA DE SONIDO ====================
+
+    /**
+     * Reproduce sonido desde resources
+     */
+    private void playSound(String fileName) {
+        try {
+            // Usar ClassLoader para cargar desde resources
+            java.net.URL soundUrl = getClass().getClassLoader().getResource("music/" + fileName);
+
+            if (soundUrl == null) {
+                // Intentar otro método si el anterior falla
+                soundUrl = getClass().getResource("/music/" + fileName);
+            }
+
+            if (soundUrl != null) {
+                System.out.println("✅ Sonido encontrado: " + fileName);
+                String soundPath = soundUrl.toExternalForm();
+
+                // Asegurarse de que estamos usando el Media correcto de JavaFX
+                javafx.scene.media.Media media = new javafx.scene.media.Media(soundPath);
+                MediaPlayer mediaPlayer = new MediaPlayer(media);
+
+                // Configurar el reproductor
+                mediaPlayer.setVolume(0.7); // Volumen al 70%
+                mediaPlayer.setOnReady(() -> {
+                    System.out.println("🔊 Reproduciendo: " + fileName + " (duración: " +
+                            mediaPlayer.getTotalDuration().toSeconds() + "s)");
+                });
+
+                // Limpiar recursos cuando termine
+                mediaPlayer.setOnEndOfMedia(() -> {
+                    mediaPlayer.dispose();
+                });
+
+                // Manejar errores
+                mediaPlayer.setOnError(() -> {
+                    System.err.println("❌ Error al reproducir " + fileName + ": " + mediaPlayer.getError());
+                    mediaPlayer.dispose();
+                });
+
+                // Reproducir
+                mediaPlayer.play();
+
+            } else {
+                System.err.println("❌ No se pudo encontrar el sonido en resources: music/" + fileName);
+
+                // Intentar como fallback con rutas de archivo
+                String[] possiblePaths = {
+                        "src/main/resources/music/" + fileName,
+                        "resource/music/" + fileName,
+
+                };
+
+                for (String path : possiblePaths) {
+                    File soundFile = new File(path);
+                    if (soundFile.exists()) {
+                        System.out.println("✅ Encontrado en filesystem: " + soundFile.getAbsolutePath());
+                        javafx.scene.media.Media media = new javafx.scene.media.Media(soundFile.toURI().toString());
+                        MediaPlayer mediaPlayer = new MediaPlayer(media);
+                        mediaPlayer.setVolume(0.7);
+                        mediaPlayer.setOnEndOfMedia(mediaPlayer::dispose);
+                        mediaPlayer.play();
+                        return;
+                    }
+                }
+
+                System.err.println("❌ Archivo no encontrado en ninguna ubicación: " + fileName);
+            }
+
+        } catch (Exception e) {
+            System.err.println("❌ Error inesperado al reproducir " + fileName + ": " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Reproduce sonido de madera
+     */
+    private void playWoodSound() {
+        System.out.println("🌳 Intentando reproducir sonido de madera...");
+        playSound("wood.wav");
+    }
+
+    /**
+     * Reproduce sonido de construcción
+     */
+    private void playBuildSound() {
+        System.out.println("🏗️ Intentando reproducir sonido de construcción...");
+        playSound("construir.wav");
+    }
+
+    /**
+     * Reproduce sonido de oro
+     */
+    private void playGoldSound() {
+        System.out.println("💰 Intentando reproducir sonido de oro...");
+        playSound("coins.wav");
     }
 
     public static void main(String[] args) {

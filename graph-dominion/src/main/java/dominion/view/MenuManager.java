@@ -11,9 +11,13 @@ import javafx.scene.control.Label;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
+import javafx.scene.media.Media;
+import javafx.scene.media.MediaPlayer;
+import javafx.scene.media.MediaView;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.URL;
 
@@ -22,6 +26,7 @@ public class MenuManager {
     private Stage primaryStage;
     private GameApp gameApp;
     private StackPane menuRoot;
+    private MediaPlayer videoPlayer; // Para el video de fondo
 
     public MenuManager(Stage primaryStage) {
         this.primaryStage = primaryStage;
@@ -50,30 +55,45 @@ public class MenuManager {
             menuController controller = loader.getController();
             controller.setMenuManager(this);
 
-            // Intentar cargar imagen de fondo
+            // Detener cualquier video anterior
+            stopBackgroundVideo();
+
+            // Cargar VIDEO de fondo en lugar de imagen
             try {
-                URL imageUrl = getClass().getResource("/images/fondo.png");
-                if (imageUrl != null) {
-                    Image backgroundImage = new Image(imageUrl.toString());
-                    ImageView bg = (ImageView) newRoot.lookup("#backgroundImageView");
-                    if (bg != null) {
-                        bg.setImage(backgroundImage);
-                        bg.fitWidthProperty().bind(primaryStage.widthProperty());
-                        bg.fitHeightProperty().bind(primaryStage.heightProperty());
-                        bg.setPreserveRatio(false);
+                // Buscar el ImageView en el FXML para reemplazarlo
+                ImageView bgImageView = (ImageView) newRoot.lookup("#backgroundImageView");
+
+                if (bgImageView != null) {
+                    // Crear contenedor para el video
+                    StackPane videoContainer = new StackPane();
+                    videoContainer.setStyle("-fx-background-color: black;");
+
+                    // Cargar y configurar el video
+                    MediaView mediaView = loadBackgroundVideo();
+                    if (mediaView != null) {
+                        // Reemplazar el ImageView con el MediaView
+                        StackPane parent = (StackPane) bgImageView.getParent();
+                        int index = parent.getChildren().indexOf(bgImageView);
+                        parent.getChildren().set(index, videoContainer);
+                        videoContainer.getChildren().add(mediaView);
+
+                        // Ajustar tamaño del video
+                        mediaView.fitWidthProperty().bind(primaryStage.widthProperty());
+                        mediaView.fitHeightProperty().bind(primaryStage.heightProperty());
+                        mediaView.setPreserveRatio(false);
+
+                        System.out.println("✅ Video de fondo cargado: menu.mp4");
+                    } else {
+                        // Si no se encuentra el video, usar imagen de respaldo
+                        loadFallbackImage(newRoot);
                     }
                 } else {
-                    System.err.println("⚠️ No se encontró: /images/fondo.png");
-                    // Aplicar estilo al nodo raíz si es Region
-                    if (newRoot instanceof Region) {
-                        ((Region) newRoot).setStyle("-fx-background-color: linear-gradient(to bottom, #1a472a, #2a5c2a);");
-                    }
+                    System.err.println("⚠️ No se encontró #backgroundImageView en el FXML");
+                    loadFallbackImage(newRoot);
                 }
             } catch (Exception e) {
-                System.err.println("Error al cargar imagen de fondo: " + e.getMessage());
-                if (newRoot instanceof Region) {
-                    ((Region) newRoot).setStyle("-fx-background-color: linear-gradient(to bottom, #1a472a, #2a5c2a);");
-                }
+                System.err.println("Error al cargar video de fondo: " + e.getMessage());
+                loadFallbackImage(newRoot);
             }
 
             // Guardar referencia
@@ -99,24 +119,156 @@ public class MenuManager {
     }
 
     /**
+     * Carga el video de fondo del menú
+     */
+    private MediaView loadBackgroundVideo() {
+        try {
+            // Intentar varias ubicaciones posibles para el video
+            String[] possiblePaths = {
+                    "/videos/menu.mp4",
+                    "/video/menu.mp4",
+                    "/media/menu.mp4",
+                    "/images/menu.mp4", // En la misma carpeta que la imagen
+                    "src/main/resources/videos/menu.mp4",
+                    "src/main/resources/video/menu.mp4",
+                    "src/main/resources/media/menu.mp4",
+                    "src/main/resources/images/menu.mp4",
+                    "resources/videos/menu.mp4",
+                    "resources/video/menu.mp4",
+                    "resources/media/menu.mp4",
+                    "resources/images/menu.mp4",
+                    "videos/menu.mp4",
+                    "video/menu.mp4",
+                    "media/menu.mp4",
+                    "images/menu.mp4"
+            };
+
+            Media media = null;
+
+            // Primero intentar desde classpath (recursos)
+            for (String path : possiblePaths) {
+                if (path.startsWith("/")) {
+                    URL videoUrl = getClass().getResource(path);
+                    if (videoUrl != null) {
+                        System.out.println("✅ Encontrado video en classpath: " + path);
+                        media = new Media(videoUrl.toExternalForm());
+                        break;
+                    }
+                }
+            }
+
+            // Si no se encontró en classpath, buscar en filesystem
+            if (media == null) {
+                for (String path : possiblePaths) {
+                    if (!path.startsWith("/")) {
+                        File videoFile = new File(path);
+                        if (videoFile.exists()) {
+                            System.out.println("✅ Encontrado video en filesystem: " + videoFile.getAbsolutePath());
+                            media = new Media(videoFile.toURI().toString());
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (media != null) {
+                videoPlayer = new MediaPlayer(media);
+
+                // Configurar el video
+                videoPlayer.setCycleCount(MediaPlayer.INDEFINITE); // Repetir indefinidamente
+                videoPlayer.setMute(true); // Silenciar si no quieres audio
+                videoPlayer.setVolume(0.0); // Volumen 0
+
+                MediaView mediaView = new MediaView(videoPlayer);
+                mediaView.setSmooth(true);
+
+                // Reproducir el video
+                videoPlayer.play();
+
+                return mediaView;
+            } else {
+                System.err.println("❌ No se encontró el archivo menu.mp4 en ninguna ubicación");
+                return null;
+            }
+
+        } catch (Exception e) {
+            System.err.println("Error al cargar video: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Método de respaldo si no se encuentra el video
+     */
+    private void loadFallbackImage(Parent root) {
+        try {
+            URL imageUrl = getClass().getResource("/images/fondo.png");
+            if (imageUrl != null) {
+                Image backgroundImage = new Image(imageUrl.toString());
+                ImageView bg = (ImageView) root.lookup("#backgroundImageView");
+                if (bg != null) {
+                    bg.setImage(backgroundImage);
+                    bg.fitWidthProperty().bind(primaryStage.widthProperty());
+                    bg.fitHeightProperty().bind(primaryStage.heightProperty());
+                    bg.setPreserveRatio(false);
+                    System.out.println("⚠️  Usando imagen de respaldo: fondo.png");
+                }
+            } else {
+                System.err.println("⚠️ No se encontró: /images/fondo.png");
+                applyDefaultBackground(root);
+            }
+        } catch (Exception e) {
+            System.err.println("Error al cargar imagen de respaldo: " + e.getMessage());
+            applyDefaultBackground(root);
+        }
+    }
+
+    private void applyDefaultBackground(Parent root) {
+        if (root instanceof Region) {
+            ((Region) root).setStyle("-fx-background-color: linear-gradient(to bottom, #1a472a, #2a5c2a);");
+        }
+    }
+
+    /**
+     * Detiene el video de fondo cuando no se necesita
+     */
+    private void stopBackgroundVideo() {
+        if (videoPlayer != null) {
+            videoPlayer.stop();
+            videoPlayer.dispose();
+            videoPlayer = null;
+            System.out.println("⏹️  Video de fondo detenido");
+        }
+    }
+
+    /**
      * Menú de respaldo si falla la carga del FXML
      */
     private void showFallbackMenu() {
         StackPane root = new StackPane();
 
-        // Cargar imagen de fondo
-        try {
-            Image backgroundImage = new Image(getClass().getResourceAsStream("/images/fondo.png"));
-            BackgroundImage bgImg = new BackgroundImage(
-                    backgroundImage,
-                    BackgroundRepeat.NO_REPEAT,
-                    BackgroundRepeat.NO_REPEAT,
-                    BackgroundPosition.CENTER,
-                    new BackgroundSize(BackgroundSize.AUTO, BackgroundSize.AUTO, false, false, true, true)
-            );
-            root.setBackground(new Background(bgImg));
-        } catch (Exception e) {
-            root.setStyle("-fx-background-color: linear-gradient(to bottom, #1a472a, #2a5c2a);");
+        // Intentar cargar video de fondo
+        MediaView videoView = loadBackgroundVideo();
+        if (videoView != null) {
+            videoView.fitWidthProperty().bind(primaryStage.widthProperty());
+            videoView.fitHeightProperty().bind(primaryStage.heightProperty());
+            videoView.setPreserveRatio(false);
+            root.getChildren().add(videoView);
+        } else {
+            // Usar imagen de respaldo si no hay video
+            try {
+                Image backgroundImage = new Image(getClass().getResourceAsStream("/images/fondo.png"));
+                BackgroundImage bgImg = new BackgroundImage(
+                        backgroundImage,
+                        BackgroundRepeat.NO_REPEAT,
+                        BackgroundRepeat.NO_REPEAT,
+                        BackgroundPosition.CENTER,
+                        new BackgroundSize(BackgroundSize.AUTO, BackgroundSize.AUTO, false, false, true, true)
+                );
+                root.setBackground(new Background(bgImg));
+            } catch (Exception e) {
+                root.setStyle("-fx-background-color: linear-gradient(to bottom, #1a472a, #2a5c2a);");
+            }
         }
 
         // Crear menú manualmente
@@ -139,7 +291,10 @@ public class MenuManager {
 
         playButton.setOnAction(e -> startGame());
         infoButton.setOnAction(e -> showInformation());
-        exitButton.setOnAction(e -> primaryStage.close());
+        exitButton.setOnAction(e -> {
+            stopBackgroundVideo();
+            primaryStage.close();
+        });
 
         menuContainer.getChildren().addAll(title, playButton, infoButton, exitButton);
         root.getChildren().add(menuContainer);
@@ -189,6 +344,9 @@ public class MenuManager {
     }
 
     public void startGame() {
+        // Detener el video del menú
+        stopBackgroundVideo();
+
         if (gameApp == null) {
             System.err.println("GameApp no está configurada");
             gameApp = new GameApp();
@@ -223,7 +381,6 @@ public class MenuManager {
 
                 // Solo asegurar que el stage esté visible
                 Platform.runLater(() -> {
-
                     if (!primaryStage.isShowing()) {
                         primaryStage.show();
                     }
@@ -252,8 +409,6 @@ public class MenuManager {
             });
         }
     }
-
-
 
     public void showInformation() {
         try {
