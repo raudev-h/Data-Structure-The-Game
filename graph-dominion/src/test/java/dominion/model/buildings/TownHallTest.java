@@ -2,9 +2,11 @@ package dominion.model.buildings;
 
 import dominion.model.resources.ResourceType;
 import dominion.model.territories.Territory;
+import dominion.model.units.Knight;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -13,17 +15,51 @@ public class TownHallTest {
     private static final int POPULATION_BONUS = 5;
     private TownHall townHall;
     private Territory territory;
+    private MilitaryBase mb1, mb2;
+    private Knight knight1, knight2, knight3, knight4, knight5, knight6;
 
     @BeforeEach
     void setUp(){
         territory = new Territory();
         townHall = new TownHall("",territory,100, 5);
+        territory.setTownHall(townHall);
+
+
     }
+    private void setupComplexMilitaryScenario() {
+        MilitaryBase mb1 = new MilitaryBase("MB-01", territory, 50);
+        MilitaryBase mb2 = new MilitaryBase("MB-02", territory, 50);
+
+        // Military Base 1
+        Knight knight1 = new Knight(100, 8, 3, "K-001", townHall, territory);
+        Knight knight2 = new Knight(100, 8, 3, "K-002", townHall, territory);
+        Knight knight3 = new Knight(100, 8, 3, "K-003", townHall, territory);
+        mb1.getKnights().addAll(Arrays.asList(knight1, knight2, knight3));
+
+        // Military Base 2
+        Knight knight4 = new Knight(100, 4, 3, "K-004", townHall, territory);
+        Knight knight5 = new Knight(100, 19, 3, "K-005", townHall, territory);
+        Knight knight6 = new Knight(100, 28, 3, "K-006", townHall, territory);
+        mb2.getKnights().addAll(Arrays.asList(knight4, knight5, knight6));
+
+        townHall.getOwnedBuildings().addAll(Arrays.asList(mb1, mb2));
+    }
+
+    @Test
+    void get_TotalEffectiveDefence_MilitaryBases(){
+        setupComplexMilitaryScenario();
+        assertEquals(675, townHall.getTotalEffectiveDefenceBases(),
+                "la defensa efectiva total de los caballeros debe ser 675");
+
+    }
+
     @Test
     void getInitialCapacity_shouldReturnFive(){
         assertEquals(5,townHall.getMaxPopulationCapacity(),
                 "La capacidad inicial debe ser 5");
     }
+
+
     @Test
     void createHouse_sufficientResources_startsOrderAndSpendsCost() {
         townHall.getStoredResources().addResource(ResourceType.WOOD, 60);

@@ -81,7 +81,15 @@ public class GameControler {
     }
     //METHODS
 
+    public void starGame(){
+        gameRunning = true;
+    }
+
     //Clock Methods
+
+    public GameTimer getGameTimer(){
+        return gametimer;
+    }
 
     public boolean pauseClock(){
 
@@ -123,7 +131,7 @@ public class GameControler {
             return AttackResult.INVALID;
         }
 
-        AttackResult result = attacker.attack(target);
+            AttackResult result = attacker.attack(target);
 
 
         if (result.equals(AttackResult.VICTORY)) {
