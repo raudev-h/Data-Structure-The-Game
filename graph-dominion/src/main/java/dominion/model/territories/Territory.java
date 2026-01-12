@@ -29,4 +29,7 @@ public class Territory {
         return owner;
     }
 
+    public void setPlayerOwner(Player player ){
+        owner = player;
+    }
 }

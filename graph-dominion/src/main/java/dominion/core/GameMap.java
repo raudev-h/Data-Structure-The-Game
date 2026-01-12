@@ -5,6 +5,7 @@ import cu.edu.cujae.ceis.graph.interfaces.ILinkedNotDirectedGraph;
 import cu.edu.cujae.ceis.graph.vertex.Vertex;
 import dominion.model.players.Player;
 import dominion.model.territories.Territory;
+import org.w3c.dom.Node;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -70,26 +71,33 @@ public class GameMap {
         int pos = findPos(t);
         List<Territory> adj = new ArrayList<>();
         if(pos != -1) {
-           Vertex v = territoriesGraph.getVerticesList().get(pos);
-           for(Vertex vertex:v.getAdjacents()){
-               adj.add((Territory)vertex.getInfo());
-           }
+            Vertex v = territoriesGraph.getVerticesList().get(pos);
+            for(Vertex vertex:v.getAdjacents()){
+                adj.add((Territory)vertex.getInfo());
+            }
         }
         return adj;
     }
 
     public boolean playerCanAttack(Player player, Territory territory){
-       int pos = findPos(territory);
-       boolean playerCanAttack = false;
+        int pos = findPos(territory);
+        boolean playerCanAttack = false;
 
-       for(int i = 0; i< player.getTerritories().size() && !playerCanAttack;i++){
-           int pos1 = findPos(player.getTerritories().get(i));
+        for(int i = 0; i< player.getTerritories().size() && !playerCanAttack;i++){
+            int pos1 = findPos(player.getTerritories().get(i));
 
-           if(territoriesGraph.areAdjacents(pos, pos1)){
-               playerCanAttack = true;
-           }
-       }
-       return playerCanAttack;
+            if(territoriesGraph.areAdjacents(pos, pos1)){
+                playerCanAttack = true;
+            }
+        }
+        return playerCanAttack;
 
     }
+
+    public ArrayList<Territory> getTerritories(){
+        return territories;
+    }
+
+
+
 }

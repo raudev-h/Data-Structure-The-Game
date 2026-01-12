@@ -7,6 +7,7 @@ import dominion.model.units.Miner;
 import dominion.model.units.ResourceCollector;
 import dominion.model.units.WoodCutter;
 
+import javax.sound.midi.Soundbank;
 import java.util.*;
 
 public class TownHall {
@@ -33,10 +34,10 @@ public class TownHall {
         this.currentHealth = currentHealth;
         this.storedResources = new ResourceCollection();
         this.maxPopulationCapacity = INITIAL_CAPACITY;
-        this.workerCreationTime = workerCreationTime;
         this.currentPopulation = 0; // después podemos ajustar esto
         this.ownedBuildings = new ArrayList<>();
         this.constructionQueue = new ArrayDeque<>();
+        this.resourceCollectors = new ArrayList<>();
     }
     // GETTERS AND SETTERS
 
@@ -102,6 +103,18 @@ public class TownHall {
         return militaryBases;
     }
 
+    public ArrayList<House> getHouses(){
+        ArrayList<House> houses = new ArrayList<>();
+
+        for(Building b: ownedBuildings){
+            if(b instanceof House house){
+                houses.add(house);
+            }
+        }
+
+        return houses;
+    }
+
     public ArrayList<WoodCutter> getWoodCutters(){
         ArrayList<WoodCutter> woodCutters = new ArrayList<>();
 
@@ -115,15 +128,15 @@ public class TownHall {
     }
 
     public ArrayList<Miner> getMiners(){
-        ArrayList<Miner> woodCutters = new ArrayList<>();
+        ArrayList<Miner> miners = new ArrayList<>();
 
         for( ResourceCollector rc: resourceCollectors){
             if(rc instanceof Miner m){
-                woodCutters.add(m);
+                miners.add(m);
             }
         }
 
-        return woodCutters;
+        return miners;
     }
 
     public int getTotalEffectiveDefenceBases(){
@@ -157,16 +170,40 @@ public class TownHall {
         }
         return false;
     }
+
+    private boolean canStartBuildingCreation(BuildingType type,Map<ResourceType,Integer> cost,int buildTime){
+        if(getStoredResources().canAfford(cost)){
+            return true;
+        }
+        return false;
+    }
+
     public boolean createHouse(){
         final Map<ResourceType,Integer> HOUSE_COST = Map.of(ResourceType.WOOD,60);
         final int HOUSE_BUILD_TIME = 30;
         return startBuildingCreation(BuildingType.HOUSE,HOUSE_COST,HOUSE_BUILD_TIME);
     }
+    public boolean canCreateHouse(){
+        final Map<ResourceType,Integer> HOUSE_COST = Map.of(ResourceType.WOOD,60);
+        final int HOUSE_BUILD_TIME = 30;
+        return canStartBuildingCreation(BuildingType.HOUSE,HOUSE_COST,HOUSE_BUILD_TIME);
+    }
     public boolean createMilitaryBase(){
         final Map<ResourceType,Integer> MILITARY_BASE_COST = Map.of(ResourceType.WOOD,100);
-        final int MILITARY_BASE_BUILD_TIME = 50;
+        final int MILITARY_BASE_BUILD_TIME = 1;
         return startBuildingCreation(BuildingType.MILITARY_BASE,MILITARY_BASE_COST,MILITARY_BASE_BUILD_TIME);
     }
+    public void addMilitaryBase(Territory territory){
+        ownedBuildings.add(new MilitaryBase("1",territory,10));
+    }
+
+    public boolean canCreateMilitaryBase(){
+        final Map<ResourceType,Integer> MILITARY_BASE_COST = Map.of(ResourceType.WOOD,100);
+        final int MILITARY_BASE_BUILD_TIME = 50;
+        return canStartBuildingCreation(BuildingType.MILITARY_BASE,MILITARY_BASE_COST,MILITARY_BASE_BUILD_TIME);
+    }
+
+
     public void processConstructionQueue(){
         ConstructionOrder currentOrder = constructionQueue.peek();
         if (currentOrder != null){
@@ -190,8 +227,36 @@ public class TownHall {
                     this.territory,
                     BUILDINGS_HEALTH
             );
+
             default -> { return;}
         }
         this.ownedBuildings.add(newBuilding);
     }
+
+    public MilitaryBase getMilitaryBase(String id){
+        MilitaryBase militaryBase = null;
+        for(Building b: ownedBuildings){
+            if(b instanceof MilitaryBase){
+                MilitaryBase mb = (MilitaryBase) b;
+                if(mb.getId().equalsIgnoreCase(id)){
+                    militaryBase = mb;
+                }
+            }
+        }
+        return militaryBase;
+
+    }
+
+    public void createUnit(String type){
+        if(type.equalsIgnoreCase("minero"))
+            resourceCollectors.add(new Miner());
+        else if(type.equalsIgnoreCase("leñador"))
+            resourceCollectors.add(new WoodCutter());
+    }
+
+
+
+
+
+
 }
